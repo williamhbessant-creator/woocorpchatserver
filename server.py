@@ -9,10 +9,7 @@ import hashlib
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
 AI_KEY = os.environ.get("AI_KEY")
-
-# AI usage is unlimited. The Supabase usage table/RPCs are no longer used
-# to block requests, so visitors can keep chatting with the AI.
-AI_MAX_USES = None
+AI_MAX_USES = 5
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = Flask(__name__)
@@ -27,14 +24,19 @@ def ai_user_id():
     return hashlib.sha256((ip or "unknown").encode("utf-8")).hexdigest()
 
 
-def get_ai_uses(visitor_id):
-    # Kept for compatibility with the existing database setup.
-    result = supabase.rpc("get_ai_usage", {"p_visitor_id": visitor_id}).execute()
-    return int(result.data or 0)
+def get_ai_usage(visitor_id):
+    result = (supabase.table("ai_usage")
+              .select("uses, infinite")
+              .eq("visitor_id", visitor_id)
+              .limit(1)
+              .execute())
+    if not result.data:
+        return 0, False
+    row = result.data[0]
+    return int(row.get("uses", 0) or 0), bool(row.get("infinite", False))
 
 
 def increment_ai_uses(visitor_id):
-    # Kept for compatibility with the existing database setup.
     result = supabase.rpc("increment_ai_usage", {"p_visitor_id": visitor_id}).execute()
     return int(result.data)
 
@@ -46,8 +48,18 @@ def index():
 
 @app.get("/api/ai/usage")
 def ai_usage():
-    # Unlimited AI uses.
-    return jsonify({"uses_remaining": "∞", "unlimited": True})
+    try:
+        used, infinite = get_ai_usage(ai_user_id())
+        if infinite:
+            return jsonify({"uses_remaining": "∞", "unlimited": True, "infinite": True})
+        return jsonify({
+            "uses_remaining": max(0, AI_MAX_USES - used),
+            "unlimited": False,
+            "infinite": False
+        })
+    except Exception as error:
+        print("Supabase usage lookup failed:", repr(error))
+        return jsonify({"error": "Could not check your AI usage."}), 500
 
 
 @app.post("/api/ai")
@@ -55,7 +67,17 @@ def ai_assistant():
     if openai_client is None:
         return jsonify({"error": "AI_KEY is not configured on the server."}), 500
 
+    visitor_id = ai_user_id()
     try:
+        used, infinite = get_ai_usage(visitor_id)
+        if not infinite and used >= AI_MAX_USES:
+            return jsonify({
+                "error": "You have no AI uses remaining.",
+                "uses_remaining": 0,
+                "unlimited": False,
+                "infinite": False
+            }), 429
+
         data = request.get_json(silent=True) or {}
         message = str(data.get("message", "")).strip()
         history = data.get("history", [])
@@ -77,10 +99,20 @@ def ai_assistant():
             input=conversation,
         )
 
+        if infinite:
+            return jsonify({
+                "response": response.output_text,
+                "uses_remaining": "∞",
+                "unlimited": True,
+                "infinite": True
+            })
+
+        used = increment_ai_uses(visitor_id)
         return jsonify({
             "response": response.output_text,
-            "uses_remaining": "∞",
-            "unlimited": True
+            "uses_remaining": max(0, AI_MAX_USES - used),
+            "unlimited": False,
+            "infinite": False
         })
     except Exception as error:
         print("AI request failed:", repr(error))
@@ -194,6 +226,6 @@ if __name__ == "__main__":
     print("=" * 45)
     print("Port: 5555")
     print("Database:", SUPABASE_URL)
-    print("AI:", "enabled - unlimited uses" if AI_KEY else "disabled - AI_KEY missing")
+    print("AI:", "enabled" if AI_KEY else "disabled - AI_KEY missing")
     print("=" * 45)
     socketio.run(app, host="0.0.0.0", port=5555)
