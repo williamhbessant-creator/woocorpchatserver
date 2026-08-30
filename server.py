@@ -25,20 +25,14 @@ def ai_user_id():
 
 
 def get_ai_usage(visitor_id):
-    result = (supabase.table("ai_usage")
-              .select("uses, infinite")
-              .eq("visitor_id", visitor_id)
-              .limit(1)
-              .execute())
-    if not result.data:
-        return 0, False
-    row = result.data[0]
-    return int(row.get("uses", 0) or 0), bool(row.get("infinite", False))
+    result = supabase.rpc("get_ai_usage_info", {"p_visitor_id": visitor_id}).execute()
+    data = result.data or {}
+    return int(data.get("uses", 0) or 0), bool(data.get("infinite", False))
 
 
 def increment_ai_uses(visitor_id):
     result = supabase.rpc("increment_ai_usage", {"p_visitor_id": visitor_id}).execute()
-    return int(result.data)
+    return int(result.data or 0)
 
 
 @app.route("/")
@@ -100,19 +94,16 @@ def ai_assistant():
         )
 
         if infinite:
-            return jsonify({
-                "response": response.output_text,
-                "uses_remaining": "∞",
-                "unlimited": True,
-                "infinite": True
-            })
+            remaining = "∞"
+        else:
+            used = increment_ai_uses(visitor_id)
+            remaining = max(0, AI_MAX_USES - used)
 
-        used = increment_ai_uses(visitor_id)
         return jsonify({
             "response": response.output_text,
-            "uses_remaining": max(0, AI_MAX_USES - used),
-            "unlimited": False,
-            "infinite": False
+            "uses_remaining": remaining,
+            "unlimited": infinite,
+            "infinite": infinite
         })
     except Exception as error:
         print("AI request failed:", repr(error))
@@ -145,32 +136,15 @@ def handle_message(data):
             return
 
         timestamp = datetime.now().strftime("%H:%M:%S")
-        supabase.table("messageport5555").insert({
-            "username": username,
-            "message": message,
-            "timestamp": timestamp
-        }).execute()
-
+        supabase.table("messageport5555").insert({"username": username, "message": message, "timestamp": timestamp}).execute()
         result = (supabase.table("messageport5555")
                   .select("id, username, message, timestamp, protected")
-                  .eq("username", username)
-                  .eq("message", message)
-                  .eq("timestamp", timestamp)
-                  .order("id", desc=True)
-                  .limit(1)
-                  .execute())
-
+                  .eq("username", username).eq("message", message).eq("timestamp", timestamp)
+                  .order("id", desc=True).limit(1).execute())
         if not result.data:
             raise RuntimeError("Message was inserted but could not be read back from Supabase.")
-
         row = result.data[0]
-        socketio.emit("new_message", {
-            "id": row["id"],
-            "username": row["username"],
-            "message": row["message"],
-            "timestamp": row["timestamp"],
-            "protected": bool(row.get("protected", False))
-        })
+        socketio.emit("new_message", {"id": row["id"], "username": row["username"], "message": row["message"], "timestamp": row["timestamp"], "protected": bool(row.get("protected", False))})
     except Exception as error:
         print("Send message failed:", repr(error))
         emit("message_action_error", {"error": f"Could not send the message: {error}"})
@@ -180,13 +154,11 @@ def handle_message(data):
 def delete_message(data):
     try:
         message_id = int(data.get("id"))
-        result = (supabase.table("messageport5555").select("id, protected").maybe_single().eq("id", message_id).execute())
+        result = supabase.table("messageport5555").select("id, protected").eq("id", message_id).maybe_single().execute()
         if not result.data:
-            emit("message_action_error", {"error": "Message not found."})
-            return
+            emit("message_action_error", {"error": "Message not found."}); return
         if bool(result.data.get("protected", False)):
-            emit("message_action_error", {"error": "That message is protected from deletion."})
-            return
+            emit("message_action_error", {"error": "That message is protected from deletion."}); return
         supabase.table("messageport5555").delete().eq("id", message_id).execute()
         socketio.emit("message_deleted", {"id": message_id})
     except Exception as error:
@@ -198,10 +170,9 @@ def delete_message(data):
 def toggle_message_protection(data):
     try:
         message_id = int(data.get("id"))
-        result = (supabase.table("messageport5555").select("id, protected").maybe_single().eq("id", message_id).execute())
+        result = supabase.table("messageport5555").select("id, protected").eq("id", message_id).maybe_single().execute()
         if not result.data:
-            emit("message_action_error", {"error": "Message not found."})
-            return
+            emit("message_action_error", {"error": "Message not found."}); return
         new_protected = not bool(result.data.get("protected", False))
         supabase.table("messageport5555").update({"protected": new_protected}).eq("id", message_id).execute()
         socketio.emit("message_protection_changed", {"id": message_id, "protected": new_protected})
