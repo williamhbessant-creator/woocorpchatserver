@@ -62,7 +62,7 @@ h1 { text-align: center; }
   .message-actions { gap: 6px; }
   .message-actions button { flex: 1 1 130px; min-width: 0; min-height: 44px; }
   .ai-open-button { top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); }
-  .ai-sidebar { width: 100vw; max-width: 100vw; height: 100dvh; border-left: 0; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .ai-sidebar { width: 100vw; max-width: 100vw; height: 100dvh; border-left: 0; border-radius: 0; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
   .ai-header { padding: 12px 14px; }
   .ai-messages { padding: 12px; }
   .ai-input-area { padding: 10px; }
