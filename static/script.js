@@ -26,12 +26,18 @@ const aiInput = document.getElementById("aiInput");
 const aiMessages = document.getElementById("aiMessages");
 const aiSendButton = document.getElementById("aiSendButton");
 const aiConversation = [];
-let aiUsesRemaining = null;
+let aiUsesRemaining = Infinity;
 let aiUsesElement = null;
 
 function updateUsesRemaining(remaining) {
-    if (typeof remaining !== "number") return;
-    aiUsesRemaining = Math.max(0, remaining);
+    if (remaining === "∞" || remaining === Infinity || (remaining && remaining.unlimited)) {
+        aiUsesRemaining = Infinity;
+    } else if (typeof remaining === "number") {
+        aiUsesRemaining = Math.max(0, remaining);
+    } else {
+        return;
+    }
+
     if (!aiUsesElement) aiUsesElement = document.getElementById("aiUsesRemaining");
     if (!aiUsesElement) {
         aiUsesElement = document.createElement("div");
@@ -39,8 +45,12 @@ function updateUsesRemaining(remaining) {
         aiUsesElement.className = "ai-uses-remaining";
         aiForm.appendChild(aiUsesElement);
     }
-    aiUsesElement.textContent = `${aiUsesRemaining} AI uses remaining`;
-    if (aiUsesRemaining <= 0) {
+
+    aiUsesElement.textContent = aiUsesRemaining === Infinity
+        ? "∞ AI uses remaining"
+        : `${aiUsesRemaining} AI uses remaining`;
+
+    if (aiUsesRemaining === 0) {
         aiInput.disabled = true;
         aiSendButton.disabled = true;
         aiInput.placeholder = "No AI uses remaining";
@@ -50,14 +60,21 @@ function updateUsesRemaining(remaining) {
         aiInput.placeholder = "Ask the AI...";
     }
 }
+
 async function loadAIUses() {
     try {
         const response = await fetch("/api/ai/usage", { headers: { "Accept": "application/json" } });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load AI usage.");
         updateUsesRemaining(data.uses_remaining);
-    } catch (error) { console.error("AI usage error:", error); updateUsesRemaining(5); }
+    } catch (error) {
+        console.error("AI usage error:", error);
+        // The AI is configured as unlimited, so a temporary usage-display
+        // failure must never disable the AI input.
+        updateUsesRemaining(Infinity);
+    }
 }
+
 function openAI() {
     aiSidebar.classList.add("open"); aiOverlay.classList.add("open");
     aiSidebar.setAttribute("aria-hidden", "false"); aiOverlay.setAttribute("aria-hidden", "false");
@@ -81,8 +98,8 @@ function addAIMessage(text, type) {
 }
 function setAILoading(loading) {
     aiSendButton.dataset.loading = loading ? "true" : "false";
-    aiSendButton.disabled = loading || aiUsesRemaining === 0;
-    aiInput.disabled = loading || aiUsesRemaining === 0;
+    aiSendButton.disabled = loading;
+    aiInput.disabled = loading;
     aiSendButton.textContent = loading ? "..." : "Send";
 }
 async function sendAIMessage() {
@@ -92,12 +109,12 @@ async function sendAIMessage() {
     try {
         const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, history: aiConversation.slice(-12) }) });
         const data = await response.json(); loadingMessage.remove();
-        if (typeof data.uses_remaining === "number") updateUsesRemaining(data.uses_remaining);
+        if (typeof data.uses_remaining === "number" || data.uses_remaining === "∞") updateUsesRemaining(data.uses_remaining);
         if (!response.ok) throw new Error(data.error || "AI request failed.");
         const reply = data.response || "The AI returned an empty response.";
         addAIMessage(reply, "assistant"); aiConversation.push({ role: "assistant", content: reply });
     } catch (error) { loadingMessage.remove(); addAIMessage(error.message, "assistant"); console.error("AI request error:", error); }
-    finally { setAILoading(false); if (aiUsesRemaining !== 0) aiInput.focus(); }
+    finally { setAILoading(false); aiInput.focus(); }
 }
 aiForm.addEventListener("submit", event => { event.preventDefault(); sendAIMessage(); });
 aiInput.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); aiForm.requestSubmit(); } });
