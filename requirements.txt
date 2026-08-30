@@ -1,6 +1,5 @@
-"--upgrade pip"
-"Flask"
-"Flask-SocketIO"
-"supabase"
-"eventlet"
-"openai"
+Flask
+Flask-SocketIO
+supabase
+eventlet
+openai
