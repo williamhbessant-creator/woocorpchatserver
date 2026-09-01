@@ -35,6 +35,28 @@ const aiConversation = [];
 let aiUsesRemaining = Infinity;
 let aiUsesElement = null;
 let lastAITrigger = null;
+let userMessageCount = 0;
+const AI_REQUIRED_MESSAGES = 2;
+let aiUnlocked = false;
+
+function updateAIAccess(count) {
+    userMessageCount = Math.max(0, Number(count) || 0);
+    aiUnlocked = userMessageCount >= AI_REQUIRED_MESSAGES;
+    aiOpenButton.disabled = !aiUnlocked;
+    aiOpenButton.title = aiUnlocked
+        ? "Open AI assistant"
+        : `Send ${AI_REQUIRED_MESSAGES - userMessageCount} more message${AI_REQUIRED_MESSAGES - userMessageCount === 1 ? "" : "s"} to unlock AI`;
+    aiOpenButton.setAttribute("aria-disabled", aiUnlocked ? "false" : "true");
+    if (!aiUnlocked) {
+        aiInput.disabled = true;
+        aiSendButton.disabled = true;
+        aiInput.placeholder = `Send ${AI_REQUIRED_MESSAGES - userMessageCount} more message${AI_REQUIRED_MESSAGES - userMessageCount === 1 ? "" : "s"} in chat to unlock AI`;
+    } else if (!aiSendButton.dataset.loading && aiUsesRemaining !== 0) {
+        aiInput.disabled = false;
+        aiSendButton.disabled = false;
+        aiInput.placeholder = "Ask the AI...";
+    }
+}
 
 function updateUsesRemaining(remaining) {
     if (remaining === "∞" || remaining === Infinity || (remaining && remaining.unlimited)) aiUsesRemaining = Infinity;
@@ -50,7 +72,7 @@ function updateUsesRemaining(remaining) {
     aiUsesElement.textContent = aiUsesRemaining === Infinity ? "∞ AI uses remaining" : `${aiUsesRemaining} AI uses remaining`;
     if (aiUsesRemaining === 0) {
         aiInput.disabled = true; aiSendButton.disabled = true; aiInput.placeholder = "No AI uses remaining";
-    } else if (!aiSendButton.dataset.loading) {
+    } else if (aiUnlocked && !aiSendButton.dataset.loading) {
         aiInput.disabled = false; aiSendButton.disabled = false; aiInput.placeholder = "Ask the AI...";
     }
 }
@@ -60,11 +82,16 @@ async function loadAIUses() {
         const response = await fetch("/api/ai/usage", { headers: { "Accept": "application/json" } });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load AI usage.");
+        if (typeof data.message_count === "number") updateAIAccess(data.message_count);
         updateUsesRemaining(data.uses_remaining);
-    } catch (error) { console.error("AI usage error:", error); updateUsesRemaining(Infinity); }
+    } catch (error) { console.error("AI usage error:", error); updateAIAccess(0); updateUsesRemaining(Infinity); }
 }
 
 function openAI() {
+    if (!aiUnlocked) {
+        alert(`Send ${AI_REQUIRED_MESSAGES - userMessageCount} more message${AI_REQUIRED_MESSAGES - userMessageCount === 1 ? "" : "s"} in the public chat before using the AI.`);
+        return;
+    }
     lastAITrigger = document.activeElement;
     aiSidebar.classList.add("open"); aiOverlay.classList.add("open");
     aiSidebar.setAttribute("aria-hidden", "false"); aiOverlay.setAttribute("aria-hidden", "false");
@@ -94,15 +121,21 @@ function addAIMessage(text, type) {
 }
 function setAILoading(loading) {
     aiSendButton.dataset.loading = loading ? "true" : "false";
-    aiSendButton.disabled = loading; aiInput.disabled = loading; aiSendButton.textContent = loading ? "..." : "Send";
+    aiSendButton.disabled = loading || !aiUnlocked; aiInput.disabled = loading || !aiUnlocked; aiSendButton.textContent = loading ? "..." : "Send";
 }
 async function sendAIMessage() {
-    const text = aiInput.value.trim(); if (!text || aiSendButton.disabled) return;
+    const text = aiInput.value.trim();
+    if (!aiUnlocked) {
+        alert(`Send ${AI_REQUIRED_MESSAGES - userMessageCount} more message${AI_REQUIRED_MESSAGES - userMessageCount === 1 ? "" : "s"} in the public chat before using the AI.`);
+        return;
+    }
+    if (!text || aiSendButton.disabled) return;
     addAIMessage(text, "user"); aiConversation.push({ role: "user", content: text }); aiInput.value = "";
     setAILoading(true); const loadingMessage = addAIMessage("Thinking...", "assistant");
     try {
         const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, history: aiConversation.slice(-12) }) });
         const data = await response.json(); loadingMessage.remove();
+        if (typeof data.message_count === "number") updateAIAccess(data.message_count);
         if (typeof data.uses_remaining === "number" || data.uses_remaining === "∞") updateUsesRemaining(data.uses_remaining);
         if (!response.ok) throw new Error(data.error || "AI request failed.");
         const reply = data.response || "The AI returned an empty response.";
@@ -166,14 +199,14 @@ function updateMessageProtection(id, protectedMessage) {
     }
 }
 
-socket.on("connect", () => { console.log("Connected to chat server", socket.id); socket.emit("request_history"); });
+socket.on("connect", () => { console.log("Connected to chat server", socket.id); socket.emit("request_history"); loadAIUses(); });
 socket.on("disconnect", reason => { console.log("Disconnected from chat server:", reason); if (reason === "io server disconnect") socket.connect(); });
 socket.on("connect_error", error => console.error("Socket.IO connection error:", error));
 socket.io.on("reconnect_attempt", attempt => console.log("Chat server reconnect attempt:", attempt));
-socket.io.on("reconnect", attempt => { console.log("Reconnected to chat server after", attempt, "attempt(s)"); socket.emit("request_history"); });
+socket.io.on("reconnect", attempt => { console.log("Reconnected to chat server after", attempt, "attempt(s)"); socket.emit("request_history"); loadAIUses(); });
 socket.io.on("reconnect_error", error => console.error("Chat server reconnect error:", error));
 socket.io.on("reconnect_failed", () => console.error("Could not reconnect to chat server."));
-window.addEventListener("pageshow", event => { if (event.persisted) { if (!socket.connected) socket.connect(); } });
+window.addEventListener("pageshow", event => { if (event.persisted) { if (!socket.connected) socket.connect(); loadAIUses(); } });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !socket.connected) socket.connect(); });
 
 socket.on("chat_history", history => {
@@ -181,10 +214,11 @@ socket.on("chat_history", history => {
     history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5]));
 });
 socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected, data.can_manage));
+socket.on("message_count_updated", data => updateAIAccess(data.message_count));
 socket.on("message_deleted", data => { closeMessageMenu(); const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`); if (div) div.remove(); });
 socket.on("message_protection_changed", data => updateMessageProtection(data.id, data.protected));
 socket.on("message_action_error", data => alert(data.error || "The message action could not be completed."));
-socket.on("history_cleared", () => { closeMessageMenu(); document.querySelectorAll(".message:not([data-protected='true'])").forEach(div => div.remove()); });
+socket.on("history_cleared", () => { closeMessageMenu(); document.querySelectorAll(".message:not([data-protected='true'])").forEach(div => div.remove()); loadAIUses(); });
 
 function sendMessage() {
     const user = username.value.trim(), text = message.value.trim();
@@ -197,3 +231,6 @@ sendButton.addEventListener("click", sendMessage);
 message.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); sendMessage(); } });
 clearButton.addEventListener("click", () => { if (confirm("Clear the chat? Protected messages will stay.")) socket.emit("clear_history"); });
 document.addEventListener("click", event => { if (!event.target.closest(".message")) closeMessageMenu(); });
+
+updateAIAccess(0);
+loadAIUses();
