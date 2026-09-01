@@ -31,7 +31,10 @@ const aiForm = document.getElementById("aiForm");
 const aiInput = document.getElementById("aiInput");
 const aiMessages = document.getElementById("aiMessages");
 const aiSendButton = document.getElementById("aiSendButton");
-const aiConversation = [];
+const aiHistory = document.getElementById("aiHistory");
+const newAIChatButton = document.getElementById("newAIChatButton");
+const aiChatTitle = document.getElementById("aiChatTitle");
+let currentAIConversationId = null;
 let aiUsesRemaining = Infinity;
 let aiUsesElement = null;
 let lastAITrigger = null;
@@ -40,8 +43,6 @@ const AI_REQUIRED_MESSAGES = 2;
 let aiUnlocked = false;
 let aiInfinite = false;
 
-// The server is authoritative. Infinite permission comes from /api/ai/usage,
-// never from localStorage or a value supplied by the browser.
 function updateAIAccess(count, infinite = aiInfinite) {
     userMessageCount = Math.max(0, Number(count) || 0);
     aiInfinite = Boolean(infinite);
@@ -58,7 +59,7 @@ function updateAIAccess(count, infinite = aiInfinite) {
     } else if (!aiSendButton.dataset.loading && aiUsesRemaining !== 0) {
         aiInput.disabled = false;
         aiSendButton.disabled = false;
-        aiInput.placeholder = "Ask the AI...";
+        aiInput.placeholder = "Ask WAI...";
     }
 }
 
@@ -67,17 +68,16 @@ function updateUsesRemaining(remaining) {
     else if (typeof remaining === "number") aiUsesRemaining = Math.max(0, remaining);
     else return;
     if (!aiUsesElement) aiUsesElement = document.getElementById("aiUsesRemaining");
-    if (!aiUsesElement) {
-        aiUsesElement = document.createElement("div");
-        aiUsesElement.id = "aiUsesRemaining";
-        aiUsesElement.className = "ai-uses-remaining";
-        aiForm.appendChild(aiUsesElement);
-    }
+    if (!aiUsesElement) return;
     aiUsesElement.textContent = aiUsesRemaining === Infinity ? "∞ AI uses remaining" : `${aiUsesRemaining} AI uses remaining`;
     if (aiUsesRemaining === 0) {
-        aiInput.disabled = true; aiSendButton.disabled = true; aiInput.placeholder = "No AI uses remaining";
+        aiInput.disabled = true;
+        aiSendButton.disabled = true;
+        aiInput.placeholder = "No AI uses remaining";
     } else if (aiUnlocked && !aiSendButton.dataset.loading) {
-        aiInput.disabled = false; aiSendButton.disabled = false; aiInput.placeholder = "Ask the AI...";
+        aiInput.disabled = false;
+        aiSendButton.disabled = false;
+        aiInput.placeholder = "Ask WAI...";
     }
 }
 
@@ -86,18 +86,144 @@ async function loadAIUses() {
         const response = await fetch("/api/ai/usage", { headers: { "Accept": "application/json" }, cache: "no-store" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load AI usage.");
-
-        // IMPORTANT: pass the server's infinite flag into the access check.
-        // Previously the client ignored this value, so infinite users stayed locked.
         updateAIAccess(data.message_count || 0, data.infinite === true);
         updateUsesRemaining(data.uses_remaining);
     } catch (error) {
         console.error("AI usage error:", error);
-        // Fail closed: an unavailable permission check must NOT grant access.
         aiInfinite = false;
         updateAIAccess(0, false);
         updateUsesRemaining(0);
     }
+}
+
+function resetAIMessages(title = "New Chat") {
+    aiChatTitle.textContent = title;
+    aiMessages.innerHTML = "";
+    addAIMessage("Hello! How can I help?", "assistant");
+}
+
+function addAIMessage(text, type) {
+    const div = document.createElement("div");
+    div.className = `ai-message ai-message-${type}`;
+    const name = document.createElement("div");
+    name.className = "ai-message-name";
+    name.textContent = type === "user" ? "You" : "WAI";
+    const body = document.createElement("div");
+    body.textContent = text;
+    div.appendChild(name);
+    div.appendChild(body);
+    aiMessages.appendChild(div);
+    aiMessages.scrollTop = aiMessages.scrollHeight;
+    return div;
+}
+
+function renderAIHistory(conversations) {
+    aiHistory.innerHTML = "";
+    if (!conversations.length) {
+        const empty = document.createElement("div");
+        empty.className = "ai-history-empty";
+        empty.textContent = "No saved chats yet.";
+        aiHistory.appendChild(empty);
+        return;
+    }
+    conversations.forEach(chat => {
+        const item = document.createElement("div");
+        item.className = "ai-history-item" + (String(chat.id) === String(currentAIConversationId) ? " active" : "");
+        const main = document.createElement("button");
+        main.type = "button";
+        main.className = "ai-history-main";
+        main.title = chat.title;
+        const title = document.createElement("span");
+        title.className = "ai-history-title";
+        title.textContent = chat.title || "New Chat";
+        const date = document.createElement("span");
+        date.className = "ai-history-date";
+        date.textContent = chat.updated_at ? new Date(chat.updated_at).toLocaleDateString() : "";
+        main.append(title, date);
+        main.addEventListener("click", () => loadAIConversation(chat.id, chat.title));
+
+        const actions = document.createElement("div");
+        actions.className = "ai-history-actions";
+        const rename = document.createElement("button");
+        rename.type = "button";
+        rename.className = "ai-history-action";
+        rename.textContent = "✎";
+        rename.title = "Rename chat";
+        rename.addEventListener("click", async event => {
+            event.stopPropagation();
+            const next = prompt("Rename this AI chat:", chat.title || "New Chat");
+            if (next === null) return;
+            const name = next.trim();
+            if (!name) return;
+            const response = await fetch(`/api/ai/history/${encodeURIComponent(chat.id)}`, {
+                method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: name })
+            });
+            if (!response.ok) { const data = await response.json().catch(() => ({})); alert(data.error || "Could not rename the chat."); return; }
+            if (String(chat.id) === String(currentAIConversationId)) aiChatTitle.textContent = name;
+            loadAIHistory();
+        });
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "ai-history-action ai-history-delete";
+        del.textContent = "🗑";
+        del.title = "Delete chat";
+        del.addEventListener("click", async event => {
+            event.stopPropagation();
+            if (!confirm(`Delete "${chat.title || "New Chat"}"?`)) return;
+            const response = await fetch(`/api/ai/history/${encodeURIComponent(chat.id)}`, { method: "DELETE" });
+            if (!response.ok) { const data = await response.json().catch(() => ({})); alert(data.error || "Could not delete the chat."); return; }
+            if (String(chat.id) === String(currentAIConversationId)) {
+                currentAIConversationId = null;
+                resetAIMessages();
+            }
+            loadAIHistory();
+        });
+        actions.append(rename, del);
+        item.append(main, actions);
+        aiHistory.appendChild(item);
+    });
+}
+
+async function loadAIHistory() {
+    try {
+        const response = await fetch("/api/ai/history", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load AI history.");
+        renderAIHistory(data.conversations || []);
+    } catch (error) {
+        console.error("AI history error:", error);
+        aiHistory.innerHTML = "";
+        const empty = document.createElement("div");
+        empty.className = "ai-history-empty";
+        empty.textContent = "Could not load chat history.";
+        aiHistory.appendChild(empty);
+    }
+}
+
+async function loadAIConversation(id, title = "New Chat") {
+    try {
+        const response = await fetch(`/api/ai/history/${encodeURIComponent(id)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load that chat.");
+        currentAIConversationId = id;
+        aiChatTitle.textContent = title || "New Chat";
+        aiMessages.innerHTML = "";
+        const messages = data.messages || [];
+        if (!messages.length) addAIMessage("Hello! How can I help?", "assistant");
+        messages.forEach(item => addAIMessage(item.content, item.role === "user" ? "user" : "assistant"));
+        renderAIHistory((await (await fetch("/api/ai/history", { cache: "no-store" })).json()).conversations || []);
+        aiInput.focus();
+    } catch (error) {
+        console.error("AI conversation error:", error);
+        alert(error.message || "Could not load that chat.");
+    }
+}
+
+async function newAIChat() {
+    currentAIConversationId = null;
+    resetAIMessages();
+    await loadAIHistory();
+    aiInput.focus();
 }
 
 function openAI() {
@@ -106,9 +232,14 @@ function openAI() {
         return;
     }
     lastAITrigger = document.activeElement;
-    aiSidebar.classList.add("open"); aiOverlay.classList.add("open");
-    aiSidebar.setAttribute("aria-hidden", "false"); aiOverlay.setAttribute("aria-hidden", "false");
-    loadAIUses(); setTimeout(() => aiInput.focus(), 250);
+    aiSidebar.classList.add("open");
+    aiOverlay.classList.add("open");
+    aiSidebar.setAttribute("aria-hidden", "false");
+    aiOverlay.setAttribute("aria-hidden", "false");
+    loadAIUses();
+    loadAIHistory();
+    if (currentAIConversationId) loadAIConversation(currentAIConversationId, aiChatTitle.textContent);
+    setTimeout(() => aiInput.focus(), 250);
 }
 function closeAI() {
     const focusTarget = lastAITrigger && document.contains(lastAITrigger) ? lastAITrigger : aiOpenButton;
@@ -116,26 +247,24 @@ function closeAI() {
         if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus({ preventScroll: true });
         else document.activeElement?.blur();
     }
-    aiSidebar.classList.remove("open"); aiOverlay.classList.remove("open");
-    aiSidebar.setAttribute("aria-hidden", "true"); aiOverlay.setAttribute("aria-hidden", "true");
+    aiSidebar.classList.remove("open");
+    aiOverlay.classList.remove("open");
+    aiSidebar.setAttribute("aria-hidden", "true");
+    aiOverlay.setAttribute("aria-hidden", "true");
 }
 aiOpenButton.addEventListener("click", openAI);
 aiCloseButton.addEventListener("click", closeAI);
 aiOverlay.addEventListener("click", closeAI);
+newAIChatButton.addEventListener("click", newAIChat);
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeAI(); });
 
-function addAIMessage(text, type) {
-    const div = document.createElement("div"); div.className = `ai-message ai-message-${type}`;
-    const name = document.createElement("div"); name.className = "ai-message-name";
-    name.textContent = type === "user" ? "You" : "AI Assistant";
-    const body = document.createElement("div"); body.textContent = text;
-    div.appendChild(name); div.appendChild(body); aiMessages.appendChild(div);
-    aiMessages.scrollTop = aiMessages.scrollHeight; return div;
-}
 function setAILoading(loading) {
     aiSendButton.dataset.loading = loading ? "true" : "false";
-    aiSendButton.disabled = loading || !aiUnlocked; aiInput.disabled = loading || !aiUnlocked; aiSendButton.textContent = loading ? "..." : "Send";
+    aiSendButton.disabled = loading || !aiUnlocked;
+    aiInput.disabled = loading || !aiUnlocked;
+    aiSendButton.textContent = loading ? "..." : "Send";
 }
+
 async function sendAIMessage() {
     const text = aiInput.value.trim();
     if (!aiUnlocked) {
@@ -143,18 +272,37 @@ async function sendAIMessage() {
         return;
     }
     if (!text || aiSendButton.disabled) return;
-    addAIMessage(text, "user"); aiConversation.push({ role: "user", content: text }); aiInput.value = "";
-    setAILoading(true); const loadingMessage = addAIMessage("Thinking...", "assistant");
+    addAIMessage(text, "user");
+    aiInput.value = "";
+    setAILoading(true);
+    const loadingMessage = addAIMessage("Thinking...", "assistant");
     try {
-        const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, history: aiConversation.slice(-12) }) });
-        const data = await response.json(); loadingMessage.remove();
+        const response = await fetch("/api/ai", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text, conversation_id: currentAIConversationId })
+        });
+        const data = await response.json();
+        loadingMessage.remove();
         if (typeof data.message_count === "number") updateAIAccess(data.message_count, data.infinite === true || aiInfinite);
         if (typeof data.uses_remaining === "number" || data.uses_remaining === "∞") updateUsesRemaining(data.uses_remaining);
         if (!response.ok) throw new Error(data.error || "AI request failed.");
+        currentAIConversationId = data.conversation_id || currentAIConversationId;
         const reply = data.response || "The AI returned an empty response.";
-        addAIMessage(reply, "assistant"); aiConversation.push({ role: "assistant", content: reply });
-    } catch (error) { loadingMessage.remove(); addAIMessage(error.message, "assistant"); console.error("AI request error:", error); }
-    finally { setAILoading(false); aiInput.focus(); }
+        addAIMessage(reply, "assistant");
+        await loadAIHistory();
+        if (currentAIConversationId) {
+            const selected = [...aiHistory.querySelectorAll(".ai-history-item")].find(item => item.classList.contains("active"));
+            if (!selected) await loadAIHistory();
+        }
+    } catch (error) {
+        loadingMessage.remove();
+        addAIMessage(error.message, "assistant");
+        console.error("AI request error:", error);
+    } finally {
+        setAILoading(false);
+        aiInput.focus();
+    }
 }
 aiForm.addEventListener("submit", event => { event.preventDefault(); sendAIMessage(); });
 aiInput.addEventListener("keydown", event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); aiForm.requestSubmit(); } });
@@ -170,34 +318,20 @@ function iconButton(label, icon, className, title, onClick, disabled = false) {
     button.setAttribute("aria-label", title); button.innerHTML = `<span class="message-action-icon" aria-hidden="true">${icon}</span><span class="message-action-label">${label}</span>`;
     button.disabled = disabled; button.addEventListener("click", event => { event.stopPropagation(); onClick(); }); return button;
 }
-
 function showMessageMenu(div, id, protectedMessage) {
     closeMessageMenu(); div.classList.add("message-selected");
     const menu = document.createElement("div"); menu.className = "message-actions";
-    const protectButton = iconButton(protectedMessage ? "Unprotect" : "Protect", "🛡", "message-action-protect", protectedMessage ? "Unprotect message" : "Protect from deletion", () => {
-        socket.emit("toggle_message_protection", { id }); closeMessageMenu();
-    });
-    const deleteButton = iconButton("Delete", "🗑", "message-action-delete", protectedMessage ? "Protected message" : "Delete message", () => {
-        if (!protectedMessage && confirm("Delete this message?")) socket.emit("delete_message", { id });
-        closeMessageMenu();
-    }, protectedMessage);
+    const protectButton = iconButton(protectedMessage ? "Unprotect" : "Protect", "🛡", "message-action-protect", protectedMessage ? "Unprotect message" : "Protect from deletion", () => { socket.emit("toggle_message_protection", { id }); closeMessageMenu(); });
+    const deleteButton = iconButton("Delete", "🗑", "message-action-delete", protectedMessage ? "Protected message" : "Delete message", () => { if (!protectedMessage && confirm("Delete this message?")) socket.emit("delete_message", { id }); closeMessageMenu(); }, protectedMessage);
     menu.appendChild(protectButton); menu.appendChild(deleteButton); div.appendChild(menu); activeMessageMenu = menu;
 }
-
 function addMessage(id, user, text, time, protectedMessage = false, canManage = false) {
     const div = document.createElement("div");
     div.className = user === "[SERVER]" ? "message server-message" : "message";
     div.dataset.messageId = id; div.dataset.protected = protectedMessage ? "true" : "false"; div.dataset.canManage = canManage ? "true" : "false";
     div.innerHTML = `<span class="time">[${escapeHtml(time)}]</span> <span class="user">${escapeHtml(user)}</span>: <span class="text">${escapeHtml(text)}</span>`;
-    if (protectedMessage) {
-        const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge);
-    }
-    if (canManage) {
-        div.addEventListener("click", event => {
-            if (event.target.closest(".message-actions")) return;
-            showMessageMenu(div, id, div.dataset.protected === "true");
-        });
-    }
+    if (protectedMessage) { const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge); }
+    if (canManage) div.addEventListener("click", event => { if (event.target.closest(".message-actions")) return; showMessageMenu(div, id, div.dataset.protected === "true"); });
     chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
 }
 function updateMessageProtection(id, protectedMessage) {
@@ -205,9 +339,7 @@ function updateMessageProtection(id, protectedMessage) {
     if (!div) return;
     div.dataset.protected = protectedMessage ? "true" : "false";
     div.querySelector(".protected-badge")?.remove();
-    if (protectedMessage) {
-        const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge);
-    }
+    if (protectedMessage) { const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge); }
 }
 
 socket.on("connect", () => { console.log("Connected to chat server", socket.id); socket.emit("request_history"); loadAIUses(); });
@@ -217,13 +349,10 @@ socket.io.on("reconnect_attempt", attempt => console.log("Chat server reconnect 
 socket.io.on("reconnect", attempt => { console.log("Reconnected to chat server after", attempt, "attempt(s)"); socket.emit("request_history"); loadAIUses(); });
 socket.io.on("reconnect_error", error => console.error("Chat server reconnect error:", error));
 socket.io.on("reconnect_failed", () => console.error("Could not reconnect to chat server."));
-window.addEventListener("pageshow", event => { if (event.persisted) { if (!socket.connected) socket.connect(); loadAIUses(); } });
+window.addEventListener("pageshow", event => { if (event.persisted) { if (!socket.connected) socket.connect(); loadAIUses(); loadAIHistory(); } });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !socket.connected) socket.connect(); });
 
-socket.on("chat_history", history => {
-    closeMessageMenu(); chatBox.innerHTML = "";
-    history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5]));
-});
+socket.on("chat_history", history => { closeMessageMenu(); chatBox.innerHTML = ""; history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5])); });
 socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected, data.can_manage));
 socket.on("message_count_updated", data => updateAIAccess(data.message_count, aiInfinite));
 socket.on("message_deleted", data => { closeMessageMenu(); const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`); if (div) div.remove(); });
@@ -244,4 +373,5 @@ clearButton.addEventListener("click", () => { if (confirm("Clear the chat? Prote
 document.addEventListener("click", event => { if (!event.target.closest(".message")) closeMessageMenu(); });
 
 updateAIAccess(0, false);
+resetAIMessages();
 loadAIUses();
