@@ -86,7 +86,8 @@
       button.textContent = emoji;
       button.addEventListener("click", event => {
         event.stopPropagation();
-        socket?.emit("toggle_reaction", { message_id: Number(message.dataset.messageId), emoji });
+        if (!socket?.connected) return;
+        socket.emit("toggle_reaction", { message_id: Number(message.dataset.messageId), emoji });
       });
       bar.appendChild(button);
     });
@@ -109,20 +110,58 @@
     }
   }
 
+  function refreshChatFromServer() {
+    if (socket?.connected) socket.emit("request_history");
+  }
+
+  function sortMessagesById() {
+    if (!chatBox) return;
+    const messages = [...chatBox.querySelectorAll(".message")];
+    messages.sort((a, b) => Number(a.dataset.messageId || 0) - Number(b.dataset.messageId || 0));
+    messages.forEach(message => chatBox.appendChild(message));
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
   if (chatBox) {
     new MutationObserver(() => chatBox.querySelectorAll(".message").forEach(addReactionUI)).observe(chatBox, { childList: true });
     chatBox.querySelectorAll(".message").forEach(addReactionUI);
   }
+
   if (socket) {
     socket.on("message_reactions", data => {
       const message = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.message_id))}"]`);
       if (message) renderReactionCounts(message, data.reactions || {});
+      // Re-read from the database so the visible state is never stale.
+      loadPersistedReactions([data.message_id]);
     });
+
     socket.on("chat_history", history => {
-      setTimeout(() => loadPersistedReactions((history || []).map(msg => msg[0])), 0);
+      const rows = history || [];
+      setTimeout(() => {
+        sortMessagesById();
+        loadPersistedReactions(rows.map(msg => msg[0]));
+      }, 0);
     });
+
     socket.on("new_message", data => {
-      setTimeout(() => loadPersistedReactions([data.id]), 0);
+      setTimeout(() => {
+        sortMessagesById();
+        loadPersistedReactions([data.id]);
+      }, 0);
+    });
+
+    // Protect/unprotect is persisted server-side. Refresh the message list after
+    // the server confirms the change so the badge and controls match the DB.
+    socket.on("message_protection_changed", () => {
+      setTimeout(refreshChatFromServer, 25);
+    });
+
+    // Keep the visible chat synchronized after single or bulk deletes.
+    socket.on("message_deleted", () => {
+      setTimeout(refreshChatFromServer, 25);
+    });
+    socket.on("messages_deleted", () => {
+      setTimeout(refreshChatFromServer, 25);
     });
   }
 
@@ -165,7 +204,8 @@
     modal.addEventListener("click", event => { if (event.target === modal) modal.classList.remove("open"); });
     modal.querySelector(".memory-add button").addEventListener("click", async () => {
       const value = input.value.trim(); if (!value) return;
-      await fetch("/api/ai/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory: value }) });
+      const response = await fetch("/api/ai/memory", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory: value }) });
+      if (!response.ok) { console.error("Could not save memory", await response.text()); return; }
       input.value = ""; loadMemory();
     });
     modal.querySelector(".memory-clear").addEventListener("click", async () => {
