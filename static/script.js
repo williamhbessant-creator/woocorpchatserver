@@ -38,13 +38,17 @@ let lastAITrigger = null;
 let userMessageCount = 0;
 const AI_REQUIRED_MESSAGES = 2;
 let aiUnlocked = false;
+let aiInfinite = false;
 
-function updateAIAccess(count) {
+// The server is authoritative. Infinite permission comes from /api/ai/usage,
+// never from localStorage or a value supplied by the browser.
+function updateAIAccess(count, infinite = aiInfinite) {
     userMessageCount = Math.max(0, Number(count) || 0);
-    aiUnlocked = userMessageCount >= AI_REQUIRED_MESSAGES;
+    aiInfinite = Boolean(infinite);
+    aiUnlocked = aiInfinite || userMessageCount >= AI_REQUIRED_MESSAGES;
     aiOpenButton.disabled = !aiUnlocked;
     aiOpenButton.title = aiUnlocked
-        ? "Open AI assistant"
+        ? (aiInfinite ? "Open AI assistant — unlimited access" : "Open AI assistant")
         : `Send ${AI_REQUIRED_MESSAGES - userMessageCount} more message${AI_REQUIRED_MESSAGES - userMessageCount === 1 ? "" : "s"} to unlock AI`;
     aiOpenButton.setAttribute("aria-disabled", aiUnlocked ? "false" : "true");
     if (!aiUnlocked) {
@@ -79,12 +83,21 @@ function updateUsesRemaining(remaining) {
 
 async function loadAIUses() {
     try {
-        const response = await fetch("/api/ai/usage", { headers: { "Accept": "application/json" } });
+        const response = await fetch("/api/ai/usage", { headers: { "Accept": "application/json" }, cache: "no-store" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load AI usage.");
-        if (typeof data.message_count === "number") updateAIAccess(data.message_count);
+
+        // IMPORTANT: pass the server's infinite flag into the access check.
+        // Previously the client ignored this value, so infinite users stayed locked.
+        updateAIAccess(data.message_count || 0, data.infinite === true);
         updateUsesRemaining(data.uses_remaining);
-    } catch (error) { console.error("AI usage error:", error); updateAIAccess(0); updateUsesRemaining(Infinity); }
+    } catch (error) {
+        console.error("AI usage error:", error);
+        // Fail closed: an unavailable permission check must NOT grant access.
+        aiInfinite = false;
+        updateAIAccess(0, false);
+        updateUsesRemaining(0);
+    }
 }
 
 function openAI() {
@@ -135,7 +148,7 @@ async function sendAIMessage() {
     try {
         const response = await fetch("/api/ai", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: text, history: aiConversation.slice(-12) }) });
         const data = await response.json(); loadingMessage.remove();
-        if (typeof data.message_count === "number") updateAIAccess(data.message_count);
+        if (typeof data.message_count === "number") updateAIAccess(data.message_count, data.infinite === true || aiInfinite);
         if (typeof data.uses_remaining === "number" || data.uses_remaining === "∞") updateUsesRemaining(data.uses_remaining);
         if (!response.ok) throw new Error(data.error || "AI request failed.");
         const reply = data.response || "The AI returned an empty response.";
@@ -171,8 +184,6 @@ function showMessageMenu(div, id, protectedMessage) {
     menu.appendChild(protectButton); menu.appendChild(deleteButton); div.appendChild(menu); activeMessageMenu = menu;
 }
 
-// canManage comes from the server. It is never decided from the username,
-// browser storage, or client-supplied IP data.
 function addMessage(id, user, text, time, protectedMessage = false, canManage = false) {
     const div = document.createElement("div");
     div.className = user === "[SERVER]" ? "message server-message" : "message";
@@ -214,7 +225,7 @@ socket.on("chat_history", history => {
     history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5]));
 });
 socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected, data.can_manage));
-socket.on("message_count_updated", data => updateAIAccess(data.message_count));
+socket.on("message_count_updated", data => updateAIAccess(data.message_count, aiInfinite));
 socket.on("message_deleted", data => { closeMessageMenu(); const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`); if (div) div.remove(); });
 socket.on("message_protection_changed", data => updateMessageProtection(data.id, data.protected));
 socket.on("message_action_error", data => alert(data.error || "The message action could not be completed."));
@@ -232,5 +243,5 @@ message.addEventListener("keydown", event => { if (event.key === "Enter") { even
 clearButton.addEventListener("click", () => { if (confirm("Clear the chat? Protected messages will stay.")) socket.emit("clear_history"); });
 document.addEventListener("click", event => { if (!event.target.closest(".message")) closeMessageMenu(); });
 
-updateAIAccess(0);
+updateAIAccess(0, false);
 loadAIUses();
