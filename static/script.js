@@ -34,6 +34,7 @@ const aiSendButton = document.getElementById("aiSendButton");
 const aiConversation = [];
 let aiUsesRemaining = Infinity;
 let aiUsesElement = null;
+let lastAITrigger = null;
 
 function updateUsesRemaining(remaining) {
     if (remaining === "∞" || remaining === Infinity || (remaining && remaining.unlimited)) {
@@ -80,18 +81,41 @@ async function loadAIUses() {
 }
 
 function openAI() {
-    aiSidebar.classList.add("open"); aiOverlay.classList.add("open");
-    aiSidebar.setAttribute("aria-hidden", "false"); aiOverlay.setAttribute("aria-hidden", "false");
-    loadAIUses(); setTimeout(() => aiInput.focus(), 250);
+    lastAITrigger = document.activeElement;
+    aiSidebar.classList.add("open");
+    aiOverlay.classList.add("open");
+    aiSidebar.setAttribute("aria-hidden", "false");
+    aiOverlay.setAttribute("aria-hidden", "false");
+    loadAIUses();
+    setTimeout(() => aiInput.focus(), 250);
 }
+
 function closeAI() {
-    aiSidebar.classList.remove("open"); aiOverlay.classList.remove("open");
-    aiSidebar.setAttribute("aria-hidden", "true"); aiOverlay.setAttribute("aria-hidden", "true");
+    // Move focus OUT of the sidebar before hiding it. This prevents Chrome's
+    // "Blocked aria-hidden" warning when the close button currently has focus.
+    const focusTarget = lastAITrigger && document.contains(lastAITrigger)
+        ? lastAITrigger
+        : aiOpenButton;
+
+    if (aiSidebar.contains(document.activeElement)) {
+        if (focusTarget && typeof focusTarget.focus === "function") {
+            focusTarget.focus({ preventScroll: true });
+        } else {
+            document.activeElement?.blur();
+        }
+    }
+
+    aiSidebar.classList.remove("open");
+    aiOverlay.classList.remove("open");
+    aiSidebar.setAttribute("aria-hidden", "true");
+    aiOverlay.setAttribute("aria-hidden", "true");
 }
+
 aiOpenButton.addEventListener("click", openAI);
 aiCloseButton.addEventListener("click", closeAI);
 aiOverlay.addEventListener("click", closeAI);
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeAI(); });
+
 function addAIMessage(text, type) {
     const div = document.createElement("div"); div.className = `ai-message ai-message-${type}`;
     const name = document.createElement("div"); name.className = "ai-message-name";
@@ -214,18 +238,13 @@ socket.io.on("reconnect", attempt => {
 socket.io.on("reconnect_error", error => console.error("Chat server reconnect error:", error));
 socket.io.on("reconnect_failed", () => console.error("Could not reconnect to chat server."));
 
-// Chrome/Edge may suspend this page in the back-forward cache (bfcache).
-// When the page is restored, make sure Socket.IO is connected again.
 window.addEventListener("pageshow", event => {
     if (event.persisted) {
         console.log("Page restored from bfcache — checking chat connection...");
-        if (!socket.connected) {
-            socket.connect();
-        }
+        if (!socket.connected) socket.connect();
     }
 });
 
-// Also recover when the tab becomes visible again after being suspended.
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && !socket.connected) {
         console.log("Chat page visible again — reconnecting...");
