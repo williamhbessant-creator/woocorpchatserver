@@ -27,8 +27,26 @@ class Presence:
             return list(self.users.values())
 
 
-def register_enhancements(app, socketio, supabase, visitor_id_func):
+def register_enhancements(app, socketio, supabase, visitor_id_func, openai_client=None):
     presence = Presence()
+
+    if openai_client is not None and not getattr(openai_client, "_woocorp_memory_wrapped", False):
+        original_create = openai_client.responses.create
+
+        def create_with_memory(*args, **kwargs):
+            try:
+                result = supabase.rpc("list_ai_memory", {"p_visitor_hash": visitor_id_func()}).execute()
+                memories = result.data or []
+                if memories:
+                    memory_text = "\n".join(f"- {item.get('memory', '')}" for item in memories if isinstance(item, dict))
+                    base = kwargs.get("instructions", "")
+                    kwargs["instructions"] = base + "\n\nUseful saved memory about this user (use only when relevant):\n" + memory_text
+            except Exception as error:
+                print("AI memory context lookup failed:", repr(error))
+            return original_create(*args, **kwargs)
+
+        openai_client.responses.create = create_with_memory
+        openai_client._woocorp_memory_wrapped = True
 
     def broadcast_presence():
         users = presence.list_users()
