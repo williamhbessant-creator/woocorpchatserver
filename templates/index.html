@@ -9,7 +9,7 @@
 <body>
     <div class="container">
         <header>
-            <h1>Woocorp Chat</h1>
+            <h1>🟣 Woocorp Chat</h1>
             <button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button>
         </header>
 
@@ -31,25 +31,35 @@
 
     <aside id="aiSidebar" class="ai-sidebar" aria-hidden="true">
         <div class="ai-header">
-            <div>
-                <div class="ai-title">Ask WAI</div>
-                <div class="ai-status">AI assistant </div>
+            <div class="ai-brand">
+                <div class="ai-title">WAI</div>
+                <div class="ai-status">AI assistant</div>
             </div>
-            <button id="aiCloseButton" class="ai-close-button" type="button">×</button>
-        </div>
-        <div id="aiMessages" class="ai-messages">
-            <div class="ai-message ai-message-assistant">
-                <div class="ai-message-name">AI Assistant</div>
-                <div>Hello! How can I help?</div>
+            <div class="ai-header-actions">
+                <button id="newAIChatButton" class="ai-new-button" type="button">+ New Chat</button>
+                <button id="aiCloseButton" class="ai-close-button" type="button">×</button>
             </div>
         </div>
-        <form id="aiForm" class="ai-input-area">
-            <div class="ai-input-row">
-                <textarea id="aiInput" rows="1" maxlength="2000" placeholder="Ask the AI..." autocomplete="off"></textarea>
-                <button id="aiSendButton" type="submit">Send</button>
+
+        <div class="ai-history-label">Chat History</div>
+        <div id="aiHistory" class="ai-history" aria-label="AI chat history"></div>
+
+        <div class="ai-main">
+            <div id="aiChatTitle" class="ai-chat-title">New Chat</div>
+            <div id="aiMessages" class="ai-messages">
+                <div class="ai-message ai-message-assistant">
+                    <div class="ai-message-name">WAI</div>
+                    <div>Hello! How can I help?</div>
+                </div>
             </div>
-            <div id="aiUsesRemaining" class="ai-uses-remaining">Loading AI uses remaining...</div>
-        </form>
+            <form id="aiForm" class="ai-input-area">
+                <div class="ai-input-row">
+                    <textarea id="aiInput" rows="1" maxlength="2000" placeholder="Ask WAI..." autocomplete="off"></textarea>
+                    <button id="aiSendButton" type="submit">Send</button>
+                </div>
+                <div id="aiUsesRemaining" class="ai-uses-remaining">Loading AI uses remaining...</div>
+            </form>
+        </div>
     </aside>
 
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
