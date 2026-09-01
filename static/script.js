@@ -37,14 +37,9 @@ let aiUsesElement = null;
 let lastAITrigger = null;
 
 function updateUsesRemaining(remaining) {
-    if (remaining === "∞" || remaining === Infinity || (remaining && remaining.unlimited)) {
-        aiUsesRemaining = Infinity;
-    } else if (typeof remaining === "number") {
-        aiUsesRemaining = Math.max(0, remaining);
-    } else {
-        return;
-    }
-
+    if (remaining === "∞" || remaining === Infinity || (remaining && remaining.unlimited)) aiUsesRemaining = Infinity;
+    else if (typeof remaining === "number") aiUsesRemaining = Math.max(0, remaining);
+    else return;
     if (!aiUsesElement) aiUsesElement = document.getElementById("aiUsesRemaining");
     if (!aiUsesElement) {
         aiUsesElement = document.createElement("div");
@@ -52,19 +47,11 @@ function updateUsesRemaining(remaining) {
         aiUsesElement.className = "ai-uses-remaining";
         aiForm.appendChild(aiUsesElement);
     }
-
-    aiUsesElement.textContent = aiUsesRemaining === Infinity
-        ? "∞ AI uses remaining"
-        : `${aiUsesRemaining} AI uses remaining`;
-
+    aiUsesElement.textContent = aiUsesRemaining === Infinity ? "∞ AI uses remaining" : `${aiUsesRemaining} AI uses remaining`;
     if (aiUsesRemaining === 0) {
-        aiInput.disabled = true;
-        aiSendButton.disabled = true;
-        aiInput.placeholder = "No AI uses remaining";
+        aiInput.disabled = true; aiSendButton.disabled = true; aiInput.placeholder = "No AI uses remaining";
     } else if (!aiSendButton.dataset.loading) {
-        aiInput.disabled = false;
-        aiSendButton.disabled = false;
-        aiInput.placeholder = "Ask the AI...";
+        aiInput.disabled = false; aiSendButton.disabled = false; aiInput.placeholder = "Ask the AI...";
     }
 }
 
@@ -74,43 +61,24 @@ async function loadAIUses() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load AI usage.");
         updateUsesRemaining(data.uses_remaining);
-    } catch (error) {
-        console.error("AI usage error:", error);
-        updateUsesRemaining(Infinity);
-    }
+    } catch (error) { console.error("AI usage error:", error); updateUsesRemaining(Infinity); }
 }
 
 function openAI() {
     lastAITrigger = document.activeElement;
-    aiSidebar.classList.add("open");
-    aiOverlay.classList.add("open");
-    aiSidebar.setAttribute("aria-hidden", "false");
-    aiOverlay.setAttribute("aria-hidden", "false");
-    loadAIUses();
-    setTimeout(() => aiInput.focus(), 250);
+    aiSidebar.classList.add("open"); aiOverlay.classList.add("open");
+    aiSidebar.setAttribute("aria-hidden", "false"); aiOverlay.setAttribute("aria-hidden", "false");
+    loadAIUses(); setTimeout(() => aiInput.focus(), 250);
 }
-
 function closeAI() {
-    // Move focus OUT of the sidebar before hiding it. This prevents Chrome's
-    // "Blocked aria-hidden" warning when the close button currently has focus.
-    const focusTarget = lastAITrigger && document.contains(lastAITrigger)
-        ? lastAITrigger
-        : aiOpenButton;
-
+    const focusTarget = lastAITrigger && document.contains(lastAITrigger) ? lastAITrigger : aiOpenButton;
     if (aiSidebar.contains(document.activeElement)) {
-        if (focusTarget && typeof focusTarget.focus === "function") {
-            focusTarget.focus({ preventScroll: true });
-        } else {
-            document.activeElement?.blur();
-        }
+        if (focusTarget && typeof focusTarget.focus === "function") focusTarget.focus({ preventScroll: true });
+        else document.activeElement?.blur();
     }
-
-    aiSidebar.classList.remove("open");
-    aiOverlay.classList.remove("open");
-    aiSidebar.setAttribute("aria-hidden", "true");
-    aiOverlay.setAttribute("aria-hidden", "true");
+    aiSidebar.classList.remove("open"); aiOverlay.classList.remove("open");
+    aiSidebar.setAttribute("aria-hidden", "true"); aiOverlay.setAttribute("aria-hidden", "true");
 }
-
 aiOpenButton.addEventListener("click", openAI);
 aiCloseButton.addEventListener("click", closeAI);
 aiOverlay.addEventListener("click", closeAI);
@@ -126,9 +94,7 @@ function addAIMessage(text, type) {
 }
 function setAILoading(loading) {
     aiSendButton.dataset.loading = loading ? "true" : "false";
-    aiSendButton.disabled = loading;
-    aiInput.disabled = loading;
-    aiSendButton.textContent = loading ? "..." : "Send";
+    aiSendButton.disabled = loading; aiInput.disabled = loading; aiSendButton.textContent = loading ? "..." : "Send";
 }
 async function sendAIMessage() {
     const text = aiInput.value.trim(); if (!text || aiSendButton.disabled) return;
@@ -153,58 +119,41 @@ function closeMessageMenu() {
     if (activeMessageMenu) { activeMessageMenu.remove(); activeMessageMenu = null; }
     document.querySelectorAll(".message.message-selected").forEach(el => el.classList.remove("message-selected"));
 }
-
 function iconButton(label, icon, className, title, onClick, disabled = false) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = className;
-    button.title = title;
-    button.setAttribute("aria-label", title);
-    button.innerHTML = `<span class="message-action-icon" aria-hidden="true">${icon}</span><span class="message-action-label">${label}</span>`;
-    button.disabled = disabled;
-    button.addEventListener("click", event => { event.stopPropagation(); onClick(); });
-    return button;
+    const button = document.createElement("button"); button.type = "button"; button.className = className; button.title = title;
+    button.setAttribute("aria-label", title); button.innerHTML = `<span class="message-action-icon" aria-hidden="true">${icon}</span><span class="message-action-label">${label}</span>`;
+    button.disabled = disabled; button.addEventListener("click", event => { event.stopPropagation(); onClick(); }); return button;
 }
 
 function showMessageMenu(div, id, protectedMessage) {
     closeMessageMenu(); div.classList.add("message-selected");
     const menu = document.createElement("div"); menu.className = "message-actions";
-
-    const protectButton = iconButton(
-        protectedMessage ? "Unprotect" : "Protect",
-        "🛡",
-        "message-action-protect",
-        protectedMessage ? "Unprotect message" : "Protect from deletion",
-        () => { socket.emit("toggle_message_protection", { id }); closeMessageMenu(); }
-    );
-
-    const deleteButton = iconButton(
-        "Delete",
-        "🗑",
-        "message-action-delete",
-        protectedMessage ? "Protected message" : "Delete message",
-        () => {
-            if (!protectedMessage && confirm("Delete this message?")) socket.emit("delete_message", { id });
-            closeMessageMenu();
-        },
-        protectedMessage
-    );
-
+    const protectButton = iconButton(protectedMessage ? "Unprotect" : "Protect", "🛡", "message-action-protect", protectedMessage ? "Unprotect message" : "Protect from deletion", () => {
+        socket.emit("toggle_message_protection", { id }); closeMessageMenu();
+    });
+    const deleteButton = iconButton("Delete", "🗑", "message-action-delete", protectedMessage ? "Protected message" : "Delete message", () => {
+        if (!protectedMessage && confirm("Delete this message?")) socket.emit("delete_message", { id });
+        closeMessageMenu();
+    }, protectedMessage);
     menu.appendChild(protectButton); menu.appendChild(deleteButton); div.appendChild(menu); activeMessageMenu = menu;
 }
 
-function addMessage(id, user, text, time, protectedMessage = false) {
+// canManage comes from the server. It is never decided from the username,
+// browser storage, or client-supplied IP data.
+function addMessage(id, user, text, time, protectedMessage = false, canManage = false) {
     const div = document.createElement("div");
     div.className = user === "[SERVER]" ? "message server-message" : "message";
-    div.dataset.messageId = id; div.dataset.protected = protectedMessage ? "true" : "false";
+    div.dataset.messageId = id; div.dataset.protected = protectedMessage ? "true" : "false"; div.dataset.canManage = canManage ? "true" : "false";
     div.innerHTML = `<span class="time">[${escapeHtml(time)}]</span> <span class="user">${escapeHtml(user)}</span>: <span class="text">${escapeHtml(text)}</span>`;
     if (protectedMessage) {
         const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge);
     }
-    div.addEventListener("click", event => {
-        if (event.target.closest(".message-actions")) return;
-        showMessageMenu(div, id, div.dataset.protected === "true");
-    });
+    if (canManage) {
+        div.addEventListener("click", event => {
+            if (event.target.closest(".message-actions")) return;
+            showMessageMenu(div, id, div.dataset.protected === "true");
+        });
+    }
     chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
 }
 function updateMessageProtection(id, protectedMessage) {
@@ -217,43 +166,21 @@ function updateMessageProtection(id, protectedMessage) {
     }
 }
 
-socket.on("connect", () => {
-    console.log("Connected to chat server", socket.id);
-    socket.emit("request_history");
-});
-
-socket.on("disconnect", reason => {
-    console.log("Disconnected from chat server:", reason);
-    if (reason === "io server disconnect") {
-        socket.connect();
-    }
-});
-
+socket.on("connect", () => { console.log("Connected to chat server", socket.id); socket.emit("request_history"); });
+socket.on("disconnect", reason => { console.log("Disconnected from chat server:", reason); if (reason === "io server disconnect") socket.connect(); });
 socket.on("connect_error", error => console.error("Socket.IO connection error:", error));
 socket.io.on("reconnect_attempt", attempt => console.log("Chat server reconnect attempt:", attempt));
-socket.io.on("reconnect", attempt => {
-    console.log("Reconnected to chat server after", attempt, "attempt(s)");
-    socket.emit("request_history");
-});
+socket.io.on("reconnect", attempt => { console.log("Reconnected to chat server after", attempt, "attempt(s)"); socket.emit("request_history"); });
 socket.io.on("reconnect_error", error => console.error("Chat server reconnect error:", error));
 socket.io.on("reconnect_failed", () => console.error("Could not reconnect to chat server."));
+window.addEventListener("pageshow", event => { if (event.persisted) { if (!socket.connected) socket.connect(); } });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !socket.connected) socket.connect(); });
 
-window.addEventListener("pageshow", event => {
-    if (event.persisted) {
-        console.log("Page restored from bfcache — checking chat connection...");
-        if (!socket.connected) socket.connect();
-    }
+socket.on("chat_history", history => {
+    closeMessageMenu(); chatBox.innerHTML = "";
+    history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5]));
 });
-
-document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !socket.connected) {
-        console.log("Chat page visible again — reconnecting...");
-        socket.connect();
-    }
-});
-
-socket.on("chat_history", history => { closeMessageMenu(); chatBox.innerHTML = ""; history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4])); });
-socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected));
+socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected, data.can_manage));
 socket.on("message_deleted", data => { closeMessageMenu(); const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`); if (div) div.remove(); });
 socket.on("message_protection_changed", data => updateMessageProtection(data.id, data.protected));
 socket.on("message_action_error", data => alert(data.error || "The message action could not be completed."));
@@ -263,11 +190,7 @@ function sendMessage() {
     const user = username.value.trim(), text = message.value.trim();
     if (!user) { alert("Please enter a username."); username.focus(); return; }
     if (!text) { message.focus(); return; }
-    if (!socket.connected) {
-        alert("Chat server is reconnecting. Please try again in a moment.");
-        socket.connect();
-        return;
-    }
+    if (!socket.connected) { alert("Chat server is reconnecting. Please try again in a moment."); socket.connect(); return; }
     socket.emit("send_message", { username: user, message: text }); message.value = ""; message.focus();
 }
 sendButton.addEventListener("click", sendMessage);
