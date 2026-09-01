@@ -1,4 +1,10 @@
-const socket = io();
+const socket = io({
+    transports: ["websocket", "polling"],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000
+});
 
 const chatBox = document.getElementById("chat-box");
 const username = document.getElementById("username");
@@ -69,8 +75,6 @@ async function loadAIUses() {
         updateUsesRemaining(data.uses_remaining);
     } catch (error) {
         console.error("AI usage error:", error);
-        // The AI is configured as unlimited, so a temporary usage-display
-        // failure must never disable the AI input.
         updateUsesRemaining(Infinity);
     }
 }
@@ -189,9 +193,46 @@ function updateMessageProtection(id, protectedMessage) {
     }
 }
 
-socket.on("connect", () => { console.log("Connected to chat server"); socket.emit("request_history"); });
-socket.on("disconnect", () => console.log("Disconnected from chat server"));
+socket.on("connect", () => {
+    console.log("Connected to chat server", socket.id);
+    socket.emit("request_history");
+});
+
+socket.on("disconnect", reason => {
+    console.log("Disconnected from chat server:", reason);
+    if (reason === "io server disconnect") {
+        socket.connect();
+    }
+});
+
 socket.on("connect_error", error => console.error("Socket.IO connection error:", error));
+socket.io.on("reconnect_attempt", attempt => console.log("Chat server reconnect attempt:", attempt));
+socket.io.on("reconnect", attempt => {
+    console.log("Reconnected to chat server after", attempt, "attempt(s)");
+    socket.emit("request_history");
+});
+socket.io.on("reconnect_error", error => console.error("Chat server reconnect error:", error));
+socket.io.on("reconnect_failed", () => console.error("Could not reconnect to chat server."));
+
+// Chrome/Edge may suspend this page in the back-forward cache (bfcache).
+// When the page is restored, make sure Socket.IO is connected again.
+window.addEventListener("pageshow", event => {
+    if (event.persisted) {
+        console.log("Page restored from bfcache — checking chat connection...");
+        if (!socket.connected) {
+            socket.connect();
+        }
+    }
+});
+
+// Also recover when the tab becomes visible again after being suspended.
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !socket.connected) {
+        console.log("Chat page visible again — reconnecting...");
+        socket.connect();
+    }
+});
+
 socket.on("chat_history", history => { closeMessageMenu(); chatBox.innerHTML = ""; history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4])); });
 socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected));
 socket.on("message_deleted", data => { closeMessageMenu(); const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`); if (div) div.remove(); });
@@ -203,6 +244,11 @@ function sendMessage() {
     const user = username.value.trim(), text = message.value.trim();
     if (!user) { alert("Please enter a username."); username.focus(); return; }
     if (!text) { message.focus(); return; }
+    if (!socket.connected) {
+        alert("Chat server is reconnecting. Please try again in a moment.");
+        socket.connect();
+        return;
+    }
     socket.emit("send_message", { username: user, message: text }); message.value = ""; message.focus();
 }
 sendButton.addEventListener("click", sendMessage);
