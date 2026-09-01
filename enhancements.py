@@ -1,6 +1,5 @@
-from collections import defaultdict
-from threading import Lock
 from flask import request, jsonify
+from threading import Lock
 
 
 class Presence:
@@ -31,19 +30,20 @@ class Presence:
 def register_enhancements(app, socketio, supabase, visitor_id_func):
     presence = Presence()
 
+    def broadcast_presence():
+        users = presence.list_users()
+        socketio.emit("presence_update", {"online": len(users), "users": users})
+
     @app.get("/api/presence")
     def get_presence():
-        return jsonify({"online": len(presence.list_users()), "users": presence.list_users()})
+        users = presence.list_users()
+        return jsonify({"online": len(users), "users": users})
 
     @app.get("/api/ai/memory")
     def list_memory():
         try:
-            rows = (supabase.table("ai_memory")
-                    .select("id,memory,created_at,updated_at")
-                    .eq("visitor_hash", visitor_id_func())
-                    .order("updated_at", desc=True)
-                    .limit(100).execute())
-            return jsonify({"memories": rows.data or []})
+            result = supabase.rpc("list_ai_memory", {"p_visitor_hash": visitor_id_func()}).execute()
+            return jsonify({"memories": result.data or []})
         except Exception as error:
             print("AI memory lookup failed:", repr(error))
             return jsonify({"error": "Could not load AI memory."}), 500
@@ -55,10 +55,8 @@ def register_enhancements(app, socketio, supabase, visitor_id_func):
             memory = str(data.get("memory", "")).strip()[:500]
             if not memory:
                 return jsonify({"error": "Memory cannot be empty."}), 400
-            result = (supabase.table("ai_memory")
-                      .insert({"visitor_hash": visitor_id_func(), "memory": memory})
-                      .execute())
-            return jsonify({"memory": (result.data or [{}])[0]}), 201
+            result = supabase.rpc("add_ai_memory", {"p_visitor_hash": visitor_id_func(), "p_memory": memory}).execute()
+            return jsonify({"memory": result.data}), 201
         except Exception as error:
             print("AI memory creation failed:", repr(error))
             return jsonify({"error": "Could not save AI memory."}), 500
@@ -66,7 +64,7 @@ def register_enhancements(app, socketio, supabase, visitor_id_func):
     @app.delete("/api/ai/memory/<memory_id>")
     def delete_memory(memory_id):
         try:
-            supabase.table("ai_memory").delete().eq("id", memory_id).eq("visitor_hash", visitor_id_func()).execute()
+            supabase.rpc("delete_ai_memory", {"p_visitor_hash": visitor_id_func(), "p_id": int(memory_id)}).execute()
             return jsonify({"deleted": True})
         except Exception as error:
             print("AI memory deletion failed:", repr(error))
@@ -75,7 +73,7 @@ def register_enhancements(app, socketio, supabase, visitor_id_func):
     @app.delete("/api/ai/memory")
     def clear_memory():
         try:
-            supabase.table("ai_memory").delete().eq("visitor_hash", visitor_id_func()).execute()
+            supabase.rpc("clear_ai_memory", {"p_visitor_hash": visitor_id_func()}).execute()
             return jsonify({"deleted": True})
         except Exception as error:
             print("AI memory clear failed:", repr(error))
@@ -83,19 +81,19 @@ def register_enhancements(app, socketio, supabase, visitor_id_func):
 
     @socketio.on("connect")
     def enhanced_connect():
-        count = presence.add(request.sid)
-        socketio.emit("presence_update", {"online": count, "users": presence.list_users()})
+        presence.add(request.sid)
+        broadcast_presence()
 
     @socketio.on("disconnect")
     def enhanced_disconnect():
-        count = presence.remove(request.sid)
-        socketio.emit("presence_update", {"online": count, "users": presence.list_users()})
+        presence.remove(request.sid)
+        broadcast_presence()
 
     @socketio.on("set_username")
     def set_username(data):
         username = str((data or {}).get("username", "")).strip()[:20] or "Guest"
         presence.update(request.sid, username)
-        socketio.emit("presence_update", {"online": len(presence.list_users()), "users": presence.list_users()})
+        broadcast_presence()
 
     @socketio.on("typing")
     def typing(data):
@@ -107,21 +105,11 @@ def register_enhancements(app, socketio, supabase, visitor_id_func):
         try:
             message_id = int((data or {}).get("message_id"))
             emoji = str((data or {}).get("emoji", "")).strip()
-            if emoji not in {"👍", "❤️", "😂", "😮", "😢", "🔥"}:
-                return
-            visitor_hash = visitor_id_func()
-            existing = (supabase.table("message_reactions").select("id")
-                        .eq("message_id", message_id).eq("visitor_hash", visitor_hash).eq("emoji", emoji)
-                        .limit(1).execute())
-            if existing.data:
-                supabase.table("message_reactions").delete().eq("id", existing.data[0]["id"]).execute()
-            else:
-                supabase.table("message_reactions").insert({"message_id": message_id, "visitor_hash": visitor_hash, "emoji": emoji}).execute()
-            rows = (supabase.table("message_reactions").select("message_id,emoji")
-                    .eq("message_id", message_id).execute()).data or []
-            counts = defaultdict(int)
-            for row in rows:
-                counts[row["emoji"]] += 1
-            socketio.emit("message_reactions", {"message_id": message_id, "reactions": dict(counts)})
+            result = supabase.rpc("toggle_message_reaction", {
+                "p_message_id": message_id,
+                "p_visitor_hash": visitor_id_func(),
+                "p_emoji": emoji,
+            }).execute()
+            socketio.emit("message_reactions", {"message_id": message_id, "reactions": result.data or {}})
         except Exception as error:
             print("Reaction failed:", repr(error))
