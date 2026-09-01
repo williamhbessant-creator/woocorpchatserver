@@ -61,15 +61,19 @@ def delete_conversation(supabase: Client, visitor_hash: str, conversation_id: st
     return bool(result.data)
 
 
-# The chat server imports this helper before it creates its Flask app/socket.
-# Register the optional live features once the server module has finished loading.
 def _register_late_features():
     for _ in range(100):
         server = sys.modules.get("server")
-        if server is not None and hasattr(server, "app") and hasattr(server, "socketio") and hasattr(server, "supabase") and hasattr(server, "ai_user_id"):
+        if server is not None and all(hasattr(server, name) for name in ("app", "socketio", "supabase", "ai_user_id")):
             try:
                 from enhancements import register_enhancements
-                register_enhancements(server.app, server.socketio, server.supabase, server.ai_user_id)
+                register_enhancements(
+                    server.app,
+                    server.socketio,
+                    server.supabase,
+                    server.ai_user_id,
+                    getattr(server, "openai_client", None),
+                )
             except Exception as error:
                 print("Optional enhancements registration failed:", repr(error))
             return
