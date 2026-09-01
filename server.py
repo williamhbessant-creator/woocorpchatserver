@@ -5,6 +5,7 @@ from datetime import datetime
 from supabase import create_client
 from openai import OpenAI
 import hashlib
+import hmac
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
@@ -17,11 +18,33 @@ app.config["SECRET_KEY"] = os.environ.get("FLASK_SECRET_KEY", "development-secre
 socketio = SocketIO(app, cors_allowed_origins="*")
 openai_client = OpenAI(api_key=AI_KEY) if AI_KEY else None
 
+# Keep the real IP out of the database. The secret makes the stored hash
+# difficult to reverse or use as a public IP lookup table.
+MESSAGE_OWNER_HASH_SECRET = os.environ.get("MESSAGE_OWNER_HASH_SECRET") or app.config["SECRET_KEY"]
+connected_sids = set()
+
+
+def client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    return (forwarded.split(",")[0].strip() if forwarded else request.remote_addr) or "unknown"
+
+
+def message_owner_hash():
+    return hmac.new(
+        MESSAGE_OWNER_HASH_SECRET.encode("utf-8"),
+        client_ip().encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def is_message_owner(owner_ip_hash):
+    if not owner_ip_hash:
+        return False
+    return hmac.compare_digest(str(owner_ip_hash), message_owner_hash())
+
 
 def ai_user_id():
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    ip = forwarded.split(",")[0].strip() if forwarded else request.remote_addr
-    return hashlib.sha256((ip or "unknown").encode("utf-8")).hexdigest()
+    return hashlib.sha256((client_ip()).encode("utf-8")).hexdigest()
 
 
 def get_ai_usage(visitor_id):
@@ -83,11 +106,31 @@ def ai_assistant():
         return jsonify({"error": "The AI assistant could not get a response."}), 502
 
 
+@socketio.on("connect")
+def handle_connect():
+    connected_sids.add(request.sid)
+
+
+@socketio.on("disconnect")
+def handle_disconnect():
+    connected_sids.discard(request.sid)
+
+
 @socketio.on("request_history")
 def send_history():
     try:
-        response = (supabase.table("messageport5555").select("id, username, message, timestamp, protected").order("id").limit(500).execute())
-        rows = [(row["id"], row["username"], row["message"], row["timestamp"], bool(row.get("protected", False))) for row in response.data]
+        response = (supabase.table("messageport5555").select("id, username, message, timestamp, protected, owner_ip_hash").order("id").limit(500).execute())
+        rows = [
+            (
+                row["id"],
+                row["username"],
+                row["message"],
+                row["timestamp"],
+                bool(row.get("protected", False)),
+                is_message_owner(row.get("owner_ip_hash")),
+            )
+            for row in response.data
+        ]
         emit("chat_history", rows)
     except Exception as error:
         print("History load failed:", repr(error))
@@ -104,11 +147,19 @@ def handle_message(data):
         if not message:
             emit("message_action_error", {"error": "Please enter a message."}); return
         timestamp = datetime.now().strftime("%H:%M:%S")
-        supabase.table("messageport5555").insert({"username": username, "message": message, "timestamp": timestamp}).execute()
-        result = (supabase.table("messageport5555").select("id, username, message, timestamp, protected").eq("username", username).eq("message", message).eq("timestamp", timestamp).order("id", desc=True).limit(1).execute())
+        owner_hash = message_owner_hash()
+        supabase.table("messageport5555").insert({
+            "username": username,
+            "message": message,
+            "timestamp": timestamp,
+            "owner_ip_hash": owner_hash,
+        }).execute()
+        result = (supabase.table("messageport5555").select("id, username, message, timestamp, protected").eq("username", username).eq("message", message).eq("timestamp", timestamp).eq("owner_ip_hash", owner_hash).order("id", desc=True).limit(1).execute())
         if not result.data: raise RuntimeError("Message was inserted but could not be read back from Supabase.")
         row = result.data[0]
-        socketio.emit("new_message", {"id": row["id"], "username": row["username"], "message": row["message"], "timestamp": row["timestamp"], "protected": bool(row.get("protected", False))})
+        payload = {"id": row["id"], "username": row["username"], "message": row["message"], "timestamp": row["timestamp"], "protected": bool(row.get("protected", False))}
+        for sid in list(connected_sids):
+            socketio.emit("new_message", {**payload, "can_manage": sid == request.sid}, to=sid)
     except Exception as error:
         print("Send message failed:", repr(error))
         emit("message_action_error", {"error": f"Could not send the message: {error}"})
@@ -118,10 +169,13 @@ def handle_message(data):
 def delete_message(data):
     try:
         message_id = int(data.get("id"))
-        result = supabase.table("messageport5555").select("id, protected").eq("id", message_id).maybe_single().execute()
+        result = supabase.table("messageport5555").select("id, protected, owner_ip_hash").eq("id", message_id).maybe_single().execute()
         if not result.data:
             emit("message_action_error", {"error": "Message not found."}); return
-        if bool(result.data.get("protected", False)):
+        row = result.data
+        if not is_message_owner(row.get("owner_ip_hash")):
+            emit("message_action_error", {"error": "Only the person who sent this message can delete it."}); return
+        if bool(row.get("protected", False)):
             emit("message_action_error", {"error": "That message is protected from deletion."}); return
         supabase.table("messageport5555").delete().eq("id", message_id).execute()
         socketio.emit("message_deleted", {"id": message_id})
@@ -143,16 +197,22 @@ def delete_messages(data):
                 continue
         if not ids:
             emit("message_action_error", {"error": "No messages were selected."}); return
-        result = supabase.table("messageport5555").select("id, protected").in_("id", ids).execute()
-        found = {int(row["id"]): bool(row.get("protected", False)) for row in (result.data or [])}
-        deletable = [message_id for message_id in ids if message_id in found and not found[message_id]]
+        result = supabase.table("messageport5555").select("id, protected, owner_ip_hash").in_("id", ids).execute()
+        found = {int(row["id"]): row for row in (result.data or [])}
+        deletable = [
+            message_id for message_id in ids
+            if message_id in found
+            and is_message_owner(found[message_id].get("owner_ip_hash"))
+            and not bool(found[message_id].get("protected", False))
+        ]
         if deletable:
             supabase.table("messageport5555").delete().in_("id", deletable).execute()
         socketio.emit("messages_deleted", {"ids": deletable})
-        protected_count = sum(1 for message_id in ids if found.get(message_id) is True)
+        not_owner_count = sum(1 for message_id in ids if message_id in found and not is_message_owner(found[message_id].get("owner_ip_hash")))
+        protected_count = sum(1 for message_id in ids if message_id in found and is_message_owner(found[message_id].get("owner_ip_hash")) and bool(found[message_id].get("protected", False)))
         missing_count = sum(1 for message_id in ids if message_id not in found)
-        if protected_count or missing_count:
-            emit("message_action_error", {"error": f"{protected_count} protected and {missing_count} missing message(s) were skipped."})
+        if not_owner_count or protected_count or missing_count:
+            emit("message_action_error", {"error": f"{not_owner_count} not yours, {protected_count} protected, and {missing_count} missing message(s) were skipped."})
     except Exception as error:
         print("Bulk delete messages failed:", repr(error))
         emit("message_action_error", {"error": f"Could not delete selected messages: {error}"})
@@ -162,10 +222,13 @@ def delete_messages(data):
 def toggle_message_protection(data):
     try:
         message_id = int(data.get("id"))
-        result = supabase.table("messageport5555").select("id, protected").eq("id", message_id).maybe_single().execute()
+        result = supabase.table("messageport5555").select("id, protected, owner_ip_hash").eq("id", message_id).maybe_single().execute()
         if not result.data:
             emit("message_action_error", {"error": "Message not found."}); return
-        new_protected = not bool(result.data.get("protected", False))
+        row = result.data
+        if not is_message_owner(row.get("owner_ip_hash")):
+            emit("message_action_error", {"error": "Only the person who sent this message can protect or unprotect it."}); return
+        new_protected = not bool(row.get("protected", False))
         supabase.table("messageport5555").update({"protected": new_protected}).eq("id", message_id).execute()
         socketio.emit("message_protection_changed", {"id": message_id, "protected": new_protected})
     except Exception as error:
