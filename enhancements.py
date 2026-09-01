@@ -57,6 +57,33 @@ def register_enhancements(app, socketio, supabase, visitor_id_func, openai_clien
         users = presence.list_users()
         return jsonify({"online": len(users), "users": users})
 
+    @app.get("/api/reactions")
+    def get_reactions():
+        try:
+            raw_ids = request.args.get("ids", "")
+            ids = []
+            for value in raw_ids.split(","):
+                try:
+                    message_id = int(value)
+                    if message_id > 0 and message_id not in ids:
+                        ids.append(message_id)
+                except (TypeError, ValueError):
+                    continue
+            if not ids:
+                return jsonify({"reactions": {}})
+            result = supabase.table("message_reactions").select("message_id, emoji").in_("message_id", ids).execute()
+            reactions = {}
+            for row in (result.data or []):
+                message_id = str(row.get("message_id"))
+                emoji = row.get("emoji")
+                if not emoji:
+                    continue
+                reactions.setdefault(message_id, {})[emoji] = reactions.setdefault(message_id, {}).get(emoji, 0) + 1
+            return jsonify({"reactions": reactions})
+        except Exception as error:
+            print("Reaction history lookup failed:", repr(error))
+            return jsonify({"error": "Could not load message reactions."}), 500
+
     @app.get("/api/ai/memory")
     def list_memory():
         try:
