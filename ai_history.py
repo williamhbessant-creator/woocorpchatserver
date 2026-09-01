@@ -1,7 +1,4 @@
 from supabase import Client
-import threading
-import time
-import sys
 
 
 def list_conversations(supabase: Client, visitor_hash: str):
@@ -59,25 +56,3 @@ def delete_conversation(supabase: Client, visitor_hash: str, conversation_id: st
         },
     ).execute()
     return bool(result.data)
-
-
-def _register_late_features():
-    for _ in range(100):
-        server = sys.modules.get("server")
-        if server is not None and all(hasattr(server, name) for name in ("app", "socketio", "supabase", "ai_user_id")):
-            try:
-                from enhancements import register_enhancements
-                register_enhancements(
-                    server.app,
-                    server.socketio,
-                    server.supabase,
-                    server.ai_user_id,
-                    getattr(server, "openai_client", None),
-                )
-            except Exception as error:
-                print("Optional enhancements registration failed:", repr(error))
-            return
-        time.sleep(0.05)
-
-
-threading.Thread(target=_register_late_features, daemon=True).start()
