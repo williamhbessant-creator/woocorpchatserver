@@ -15,6 +15,7 @@ from ai_history import (
     rename_conversation,
     delete_conversation,
 )
+from enhancements import register_enhancements
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
@@ -194,7 +195,6 @@ def ai_assistant():
         if conversation_id:
             existing = get_messages(supabase, visitor_id, conversation_id)
             if not existing and data.get("conversation_id"):
-                # A real empty conversation is valid, so do not reject it here.
                 pass
         else:
             title = message.replace("\n", " ").strip()
@@ -216,7 +216,6 @@ def ai_assistant():
         )
         reply = response.output_text
 
-        # Save both sides only after the model has produced a successful answer.
         save_message(supabase, visitor_id, conversation_id, "user", message)
         save_message(supabase, visitor_id, conversation_id, "assistant", reply)
 
@@ -337,6 +336,10 @@ def clear_history():
     except Exception as error:
         print("Clear history failed:", repr(error))
         emit("message_action_error", {"error": f"Could not clear the chat: {error}"})
+
+
+# Register the live presence, typing, reactions, and WAI memory Socket.IO/HTTP features.
+register_enhancements(app, socketio, supabase, ai_user_id, openai_client)
 
 
 if __name__ == "__main__":
