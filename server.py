@@ -5,6 +5,16 @@ from datetime import datetime
 from supabase import create_client
 from openai import OpenAI
 import hashlib
+import uuid
+
+from ai_history import (
+    list_conversations,
+    get_messages,
+    create_conversation,
+    save_message,
+    rename_conversation,
+    delete_conversation,
+)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
@@ -48,6 +58,13 @@ def get_user_message_count(owner_hash):
     return len(result.data or [])
 
 
+def valid_conversation_id(value):
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -79,18 +96,81 @@ def chat_message_count():
         return jsonify({"error": "Could not check your message count."}), 500
 
 
+@app.get("/api/ai/history")
+def ai_history():
+    try:
+        visitor_id = ai_user_id()
+        return jsonify({"conversations": list_conversations(supabase, visitor_id)})
+    except Exception as error:
+        print("AI history lookup failed:", repr(error))
+        return jsonify({"error": "Could not load AI chat history."}), 500
+
+
+@app.get("/api/ai/history/<conversation_id>")
+def ai_history_messages(conversation_id):
+    conversation_id = valid_conversation_id(conversation_id)
+    if not conversation_id:
+        return jsonify({"error": "Invalid conversation ID."}), 400
+    try:
+        visitor_id = ai_user_id()
+        messages = get_messages(supabase, visitor_id, conversation_id)
+        return jsonify({"messages": messages})
+    except Exception as error:
+        print("AI conversation load failed:", repr(error))
+        return jsonify({"error": "Could not load that AI conversation."}), 500
+
+
+@app.post("/api/ai/history")
+def create_ai_history():
+    try:
+        data = request.get_json(silent=True) or {}
+        title = str(data.get("title", "New Chat")).strip()[:100] or "New Chat"
+        conversation_id = create_conversation(supabase, ai_user_id(), title)
+        return jsonify({"conversation_id": conversation_id, "title": title}), 201
+    except Exception as error:
+        print("AI conversation creation failed:", repr(error))
+        return jsonify({"error": "Could not create a new AI chat."}), 500
+
+
+@app.patch("/api/ai/history/<conversation_id>")
+def rename_ai_history(conversation_id):
+    conversation_id = valid_conversation_id(conversation_id)
+    if not conversation_id:
+        return jsonify({"error": "Invalid conversation ID."}), 400
+    try:
+        data = request.get_json(silent=True) or {}
+        title = str(data.get("title", "New Chat")).strip()[:100] or "New Chat"
+        if not rename_conversation(supabase, ai_user_id(), conversation_id, title):
+            return jsonify({"error": "Conversation not found."}), 404
+        return jsonify({"title": title})
+    except Exception as error:
+        print("AI conversation rename failed:", repr(error))
+        return jsonify({"error": "Could not rename that AI chat."}), 500
+
+
+@app.delete("/api/ai/history/<conversation_id>")
+def delete_ai_history(conversation_id):
+    conversation_id = valid_conversation_id(conversation_id)
+    if not conversation_id:
+        return jsonify({"error": "Invalid conversation ID."}), 400
+    try:
+        if not delete_conversation(supabase, ai_user_id(), conversation_id):
+            return jsonify({"error": "Conversation not found."}), 404
+        return jsonify({"deleted": True})
+    except Exception as error:
+        print("AI conversation deletion failed:", repr(error))
+        return jsonify({"error": "Could not delete that AI chat."}), 500
+
+
 @app.post("/api/ai")
 def ai_assistant():
     if openai_client is None:
         return jsonify({"error": "AI_KEY is not configured on the server."}), 500
     visitor_id = ai_user_id()
     try:
-        # IMPORTANT: the infinite-use permission is checked on the server.
-        # It is never trusted from the browser/client.
         used, infinite = get_ai_usage(visitor_id)
         message_count = get_user_message_count(message_owner_id())
 
-        # Users with server-side infinite permission bypass the 2-message lock.
         if not infinite and message_count < AI_REQUIRED_MESSAGES:
             return jsonify({
                 "error": f"Send {AI_REQUIRED_MESSAGES - message_count} more message(s) in the public chat before using the AI.",
@@ -102,23 +182,50 @@ def ai_assistant():
 
         if not infinite and used >= AI_MAX_USES:
             return jsonify({"error": "You have no AI uses remaining.", "uses_remaining": 0, "unlimited": False, "infinite": False}), 429
+
         data = request.get_json(silent=True) or {}
         message = str(data.get("message", "")).strip()
-        history = data.get("history", [])
-        if not message: return jsonify({"error": "Please enter a message."}), 400
-        if len(message) > 2000: return jsonify({"error": "Message is too long."}), 400
+        conversation_id = valid_conversation_id(data.get("conversation_id")) if data.get("conversation_id") else None
+        if not message:
+            return jsonify({"error": "Please enter a message."}), 400
+        if len(message) > 2000:
+            return jsonify({"error": "Message is too long."}), 400
+
+        if conversation_id:
+            existing = get_messages(supabase, visitor_id, conversation_id)
+            if not existing and data.get("conversation_id"):
+                # A real empty conversation is valid, so do not reject it here.
+                pass
+        else:
+            title = message.replace("\n", " ").strip()
+            if len(title) > 60:
+                title = title[:57].rstrip() + "..."
+            conversation_id = create_conversation(supabase, visitor_id, title or "New Chat")
+            existing = []
+
         conversation = []
-        if isinstance(history, list):
-            for item in history[-12:]:
-                if isinstance(item, dict) and item.get("role") in ("user", "assistant") and str(item.get("content", "")).strip():
-                    conversation.append({"role": item["role"], "content": str(item["content"])[:4000]})
+        for item in existing[-12:]:
+            if isinstance(item, dict) and item.get("role") in ("user", "assistant") and str(item.get("content", "")).strip():
+                conversation.append({"role": item["role"], "content": str(item["content"])[:4000]})
         conversation.append({"role": "user", "content": message})
-        response = openai_client.responses.create(model="gpt-4.1-mini", instructions="You are the AI assistant inside Woocorp Public Chat. Be helpful, concise, friendly, and clear.", input=conversation)
-        if infinite: remaining = "∞"
+
+        response = openai_client.responses.create(
+            model="gpt-4.1-mini",
+            instructions="You are the AI assistant inside Woocorp Public Chat. Be helpful, concise, friendly, and clear.",
+            input=conversation,
+        )
+        reply = response.output_text
+
+        # Save both sides only after the model has produced a successful answer.
+        save_message(supabase, visitor_id, conversation_id, "user", message)
+        save_message(supabase, visitor_id, conversation_id, "assistant", reply)
+
+        if infinite:
+            remaining = "∞"
         else:
             used = increment_ai_uses(visitor_id)
             remaining = max(0, AI_MAX_USES - used)
-        return jsonify({"response": response.output_text, "uses_remaining": remaining, "unlimited": infinite, "infinite": infinite})
+        return jsonify({"response": reply, "uses_remaining": remaining, "unlimited": infinite, "infinite": infinite, "conversation_id": conversation_id})
     except Exception as error:
         print("AI request failed:", repr(error))
         return jsonify({"error": "The AI assistant could not get a response."}), 502
