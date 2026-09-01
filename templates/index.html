@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Woocorp Public Chat</title>
     <link id="themeStylesheet" rel="stylesheet" href="{{ url_for('static', filename='darkstyle.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='enhancements.css') }}">
 </head>
 <body>
     <div class="container">
@@ -65,5 +66,6 @@
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     <script src="{{ url_for('static', filename='bulkdelete.js') }}"></script>
+    <script src="{{ url_for('static', filename='enhancements.js') }}"></script>
 </body>
 </html>
