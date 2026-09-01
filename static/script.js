@@ -1,10 +1,11 @@
-const socket = io({
+window.socket = io({
     transports: ["websocket", "polling"],
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000
 });
+const socket = window.socket;
 
 const chatBox = document.getElementById("chat-box");
 const username = document.getElementById("username");
@@ -211,7 +212,9 @@ async function loadAIConversation(id, title = "New Chat") {
         const messages = data.messages || [];
         if (!messages.length) addAIMessage("Hello! How can I help?", "assistant");
         messages.forEach(item => addAIMessage(item.content, item.role === "user" ? "user" : "assistant"));
-        renderAIHistory((await (await fetch("/api/ai/history", { cache: "no-store" })).json()).conversations || []);
+        const historyResponse = await fetch("/api/ai/history", { cache: "no-store" });
+        const historyData = await historyResponse.json();
+        renderAIHistory(historyData.conversations || []);
         aiInput.focus();
     } catch (error) {
         console.error("AI conversation error:", error);
@@ -288,13 +291,8 @@ async function sendAIMessage() {
         if (typeof data.uses_remaining === "number" || data.uses_remaining === "∞") updateUsesRemaining(data.uses_remaining);
         if (!response.ok) throw new Error(data.error || "AI request failed.");
         currentAIConversationId = data.conversation_id || currentAIConversationId;
-        const reply = data.response || "The AI returned an empty response.";
-        addAIMessage(reply, "assistant");
+        addAIMessage(data.response || "The AI returned an empty response.", "assistant");
         await loadAIHistory();
-        if (currentAIConversationId) {
-            const selected = [...aiHistory.querySelectorAll(".ai-history-item")].find(item => item.classList.contains("active"));
-            if (!selected) await loadAIHistory();
-        }
     } catch (error) {
         loadingMessage.remove();
         addAIMessage(error.message, "assistant");
@@ -327,51 +325,60 @@ function showMessageMenu(div, id, protectedMessage) {
 }
 function addMessage(id, user, text, time, protectedMessage = false, canManage = false) {
     const div = document.createElement("div");
-    div.className = user === "[SERVER]" ? "message server-message" : "message";
-    div.dataset.messageId = id; div.dataset.protected = protectedMessage ? "true" : "false"; div.dataset.canManage = canManage ? "true" : "false";
-    div.innerHTML = `<span class="time">[${escapeHtml(time)}]</span> <span class="user">${escapeHtml(user)}</span>: <span class="text">${escapeHtml(text)}</span>`;
-    if (protectedMessage) { const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge); }
-    if (canManage) div.addEventListener("click", event => { if (event.target.closest(".message-actions")) return; showMessageMenu(div, id, div.dataset.protected === "true"); });
-    chatBox.appendChild(div); chatBox.scrollTop = chatBox.scrollHeight;
+    div.className = "message";
+    div.dataset.messageId = String(id);
+    div.dataset.protected = protectedMessage ? "1" : "0";
+    div.dataset.canManage = canManage ? "1" : "0";
+    const content = document.createElement("div");
+    content.className = "message-content";
+    const userEl = document.createElement("strong");
+    userEl.textContent = user;
+    const textEl = document.createElement("span");
+    textEl.textContent = text;
+    const timeEl = document.createElement("small");
+    timeEl.textContent = time;
+    content.append(userEl, textEl, timeEl);
+    div.appendChild(content);
+    if (canManage) div.addEventListener("click", event => { if (!event.target.closest("button")) showMessageMenu(div, id, protectedMessage); });
+    chatBox.appendChild(div);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return div;
 }
-function updateMessageProtection(id, protectedMessage) {
-    const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(id))}"]`);
-    if (!div) return;
-    div.dataset.protected = protectedMessage ? "true" : "false";
-    div.querySelector(".protected-badge")?.remove();
-    if (protectedMessage) { const badge = document.createElement("span"); badge.className = "protected-badge"; badge.textContent = " Protected"; div.appendChild(badge); }
-}
 
-socket.on("connect", () => { console.log("Connected to chat server", socket.id); socket.emit("request_history"); loadAIUses(); });
-socket.on("disconnect", reason => { console.log("Disconnected from chat server:", reason); if (reason === "io server disconnect") socket.connect(); });
-socket.on("connect_error", error => console.error("Socket.IO connection error:", error));
-socket.io.on("reconnect_attempt", attempt => console.log("Chat server reconnect attempt:", attempt));
-socket.io.on("reconnect", attempt => { console.log("Reconnected to chat server after", attempt, "attempt(s)"); socket.emit("request_history"); loadAIUses(); });
-socket.io.on("reconnect_error", error => console.error("Chat server reconnect error:", error));
-socket.io.on("reconnect_failed", () => console.error("Could not reconnect to chat server."));
-window.addEventListener("pageshow", event => { if (event.persisted) { if (!socket.connected) socket.connect(); loadAIUses(); loadAIHistory(); } });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !socket.connected) socket.connect(); });
+socket.on("connect", () => {
+    socket.emit("request_history");
+    socket.emit("set_username", { username: username.value.trim() || "Guest" });
+    loadAIUses();
+});
+socket.on("chat_history", history => {
+    closeMessageMenu();
+    chatBox.innerHTML = "";
+    history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5]));
+    updateAIAccess(history.filter(msg => msg[5]).length >= 0 ? history.filter(msg => msg[5]).length : 0);
+});
+socket.on("new_message", data => {
+    addMessage(data.id, data.username, data.message, data.timestamp, data.protected, data.can_manage);
+    if (data.can_manage) updateAIAccess((userMessageCount || 0) + 1, aiInfinite);
+});
+socket.on("message_deleted", id => {
+    const messageEl = document.querySelector(`.message[data-message-id="${CSS.escape(String(id))}"]`);
+    if (messageEl) messageEl.remove();
+});
+socket.on("message_updated", data => {
+    const messageEl = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`);
+    if (messageEl) {
+        const textEl = messageEl.querySelector(".message-content span");
+        if (textEl) textEl.textContent = data.message;
+    }
+});
+socket.on("message_action_error", data => alert(data.error || "Message action failed."));
+socket.on("connect_error", error => console.error("Chat server connection error:", error));
+socket.on("reconnect_attempt", attempt => console.log("Chat server reconnect attempt:", attempt));
+socket.on("reconnect", attempt => { console.log("Reconnected to chat server after", attempt, "attempt(s)"); socket.emit("request_history"); loadAIUses(); });
 
-socket.on("chat_history", history => { closeMessageMenu(); chatBox.innerHTML = ""; history.forEach(msg => addMessage(msg[0], msg[1], msg[2], msg[3], msg[4], msg[5])); });
-socket.on("new_message", data => addMessage(data.id, data.username, data.message, data.timestamp, data.protected, data.can_manage));
-socket.on("message_count_updated", data => updateAIAccess(data.message_count, aiInfinite));
-socket.on("message_deleted", data => { closeMessageMenu(); const div = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.id))}"]`); if (div) div.remove(); });
-socket.on("message_protection_changed", data => updateMessageProtection(data.id, data.protected));
-socket.on("message_action_error", data => alert(data.error || "The message action could not be completed."));
-socket.on("history_cleared", () => { closeMessageMenu(); document.querySelectorAll(".message:not([data-protected='true'])").forEach(div => div.remove()); loadAIUses(); });
-
-function sendMessage() {
-    const user = username.value.trim(), text = message.value.trim();
-    if (!user) { alert("Please enter a username."); username.focus(); return; }
-    if (!text) { message.focus(); return; }
-    if (!socket.connected) { alert("Chat server is reconnecting. Please try again in a moment."); socket.connect(); return; }
-    socket.emit("send_message", { username: user, message: text }); message.value = ""; message.focus();
-}
-sendButton.addEventListener("click", sendMessage);
-message.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); sendMessage(); } });
-clearButton.addEventListener("click", () => { if (confirm("Clear the chat? Protected messages will stay.")) socket.emit("clear_history"); });
-document.addEventListener("click", event => { if (!event.target.closest(".message")) closeMessageMenu(); });
-
-updateAIAccess(0, false);
-resetAIMessages();
+document.getElementById("username")?.addEventListener("change", () => socket.emit("set_username", { username: username.value.trim() || "Guest" }));
+message.addEventListener("input", () => { if (window.socket) window.socket.emit("typing", { username: username.value.trim() || "Guest", typing: true }); });
+sendButton.addEventListener("click", () => { socket.emit("send_message", { username: username.value.trim(), message: message.value.trim() }); message.value = ""; });
+message.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendButton.click(); } });
+clearButton.addEventListener("click", () => socket.emit("clear_chat"));
 loadAIUses();
