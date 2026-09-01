@@ -37,14 +37,12 @@
             </div>
             <button id="aiCloseButton" class="ai-close-button" type="button">×</button>
         </div>
-
         <div id="aiMessages" class="ai-messages">
             <div class="ai-message ai-message-assistant">
                 <div class="ai-message-name">AI Assistant</div>
                 <div>Hello! How can I help?</div>
             </div>
         </div>
-
         <form id="aiForm" class="ai-input-area">
             <div class="ai-input-row">
                 <textarea id="aiInput" rows="1" maxlength="2000" placeholder="Ask the AI..." autocomplete="off"></textarea>
@@ -56,5 +54,6 @@
 
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='bulkdelete.js') }}"></script>
 </body>
 </html>
