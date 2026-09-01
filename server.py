@@ -10,6 +10,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
 AI_KEY = os.environ.get("AI_KEY")
 AI_MAX_USES = 5
+AI_REQUIRED_MESSAGES = 2
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = Flask(__name__)
@@ -39,6 +40,14 @@ def message_owner_id():
     return ai_user_id()
 
 
+def get_user_message_count(owner_hash):
+    result = (supabase.table("messageport5555")
+              .select("id")
+              .eq("owner_ip_hash", owner_hash)
+              .execute())
+    return len(result.data or [])
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -48,12 +57,23 @@ def index():
 def ai_usage():
     try:
         used, infinite = get_ai_usage(ai_user_id())
+        message_count = get_user_message_count(message_owner_id())
         if infinite:
-            return jsonify({"uses_remaining": "∞", "unlimited": True, "infinite": True})
-        return jsonify({"uses_remaining": max(0, AI_MAX_USES - used), "unlimited": False, "infinite": False})
+            return jsonify({"uses_remaining": "∞", "unlimited": True, "infinite": True, "message_count": message_count, "required_messages": AI_REQUIRED_MESSAGES})
+        return jsonify({"uses_remaining": max(0, AI_MAX_USES - used), "unlimited": False, "infinite": False, "message_count": message_count, "required_messages": AI_REQUIRED_MESSAGES})
     except Exception as error:
         print("Supabase usage lookup failed:", repr(error))
         return jsonify({"error": "Could not check your AI usage."}), 500
+
+
+@app.get("/api/chat/message-count")
+def chat_message_count():
+    try:
+        count = get_user_message_count(message_owner_id())
+        return jsonify({"message_count": count, "required_messages": AI_REQUIRED_MESSAGES, "ai_unlocked": count >= AI_REQUIRED_MESSAGES})
+    except Exception as error:
+        print("Message count lookup failed:", repr(error))
+        return jsonify({"error": "Could not check your message count."}), 500
 
 
 @app.post("/api/ai")
@@ -62,6 +82,15 @@ def ai_assistant():
         return jsonify({"error": "AI_KEY is not configured on the server."}), 500
     visitor_id = ai_user_id()
     try:
+        message_count = get_user_message_count(message_owner_id())
+        if message_count < AI_REQUIRED_MESSAGES:
+            return jsonify({
+                "error": f"Send {AI_REQUIRED_MESSAGES - message_count} more message(s) in the public chat before using the AI.",
+                "message_count": message_count,
+                "required_messages": AI_REQUIRED_MESSAGES,
+                "ai_unlocked": False
+            }), 403
+
         used, infinite = get_ai_usage(visitor_id)
         if not infinite and used >= AI_MAX_USES:
             return jsonify({"error": "You have no AI uses remaining.", "uses_remaining": 0, "unlimited": False, "infinite": False}), 429
