@@ -146,6 +146,7 @@ def handle_message(data):
         if not result.data: raise RuntimeError("Message was inserted but could not be read back from Supabase.")
         row = result.data[0]
         socketio.emit("new_message", {"id": row["id"], "username": row["username"], "message": row["message"], "timestamp": row["timestamp"], "protected": bool(row.get("protected", False)), "can_manage": True})
+        emit("message_count_updated", {"message_count": get_user_message_count(owner_hash), "required_messages": AI_REQUIRED_MESSAGES})
     except Exception as error:
         print("Send message failed:", repr(error))
         emit("message_action_error", {"error": f"Could not send the message: {error}"})
