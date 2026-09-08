@@ -5,16 +5,24 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-);
-const functionSecret = Deno.env.get("PAID_AI_FUNCTION_SECRET")!;
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const functionSecret = Deno.env.get("PAID_AI_FUNCTION_SECRET");
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
+      headers: corsHeaders,
+    });
+  }
+
+  // This function has JWT verification disabled because it uses its own
+  // server-to-server secret. Fail closed if the required secrets are missing.
+  if (!supabaseUrl || !serviceRoleKey || !functionSecret) {
+    console.error("Paid AI function secrets are not configured.");
+    return new Response(JSON.stringify({ error: "Service not configured" }), {
+      status: 503,
       headers: corsHeaders,
     });
   }
@@ -28,6 +36,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
     const body = await req.json();
 
     if (body.action === "get") {
