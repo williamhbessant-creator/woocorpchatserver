@@ -78,9 +78,11 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
 
     @app.get("/api/ai/paid/config")
     def paid_ai_config():
-        configured = bool(stripe_client and SUPABASE_SERVICE_ROLE_KEY)
+        # The frontend button is controlled by PAID_AI_ENABLED, as intended.
+        # Missing server configuration is reported when checkout is attempted,
+        # rather than silently hiding the button.
         return jsonify({
-            "enabled": PAID_AI_ENABLED and configured,
+            "enabled": PAID_AI_ENABLED,
             "uses": PAID_AI_PACK_USES,
             "price_pence": PAID_AI_PACK_PRICE_PENCE,
             "currency": PAID_AI_CURRENCY,
