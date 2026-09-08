@@ -1,7 +1,8 @@
+import json
 import os
+from urllib.request import Request, urlopen
 
-from flask import jsonify, redirect, request
-from supabase import create_client
+from flask import jsonify, request
 
 try:
     import stripe
@@ -16,52 +17,47 @@ PAID_AI_CURRENCY = "gbp"
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+PAID_AI_FUNCTION_URL = os.environ.get("PAID_AI_FUNCTION_URL")
+PAID_AI_FUNCTION_SECRET = os.environ.get("PAID_AI_FUNCTION_SECRET")
 
 stripe_client = stripe if stripe and STRIPE_SECRET_KEY else None
 if stripe_client:
     stripe_client.api_key = STRIPE_SECRET_KEY
 
 
-def _admin_supabase(base_supabase):
-    if not SUPABASE_SERVICE_ROLE_KEY:
+def _paid_ai_function(action, payload):
+    if not PAID_AI_FUNCTION_URL or not PAID_AI_FUNCTION_SECRET:
         return None
-    url = os.environ.get("SUPABASE_URL")
-    if not url:
+    body = json.dumps({"action": action, **payload}).encode("utf-8")
+    req = Request(
+        PAID_AI_FUNCTION_URL,
+        data=body,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {PAID_AI_FUNCTION_SECRET}",
+        },
+    )
+    try:
+        with urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception as error:
+        print("Paid AI function request failed:", repr(error))
         return None
-    return create_client(url, SUPABASE_SERVICE_ROLE_KEY)
 
 
 def get_paid_uses(visitor_id, base_supabase):
-    """Return the number of purchased AI uses for this visitor.
-
-    The purchase total is intentionally not decremented. The existing AI usage
-    counter is cumulative, so subtracting purchased uses from that counter gives
-    exactly the purchased allowance without creating a client-controlled balance.
-    """
-    admin = _admin_supabase(base_supabase)
-    if admin is None:
+    """Return purchased AI uses through the Supabase Edge Function."""
+    result = _paid_ai_function("get", {"visitor_id": visitor_id})
+    if not result:
         return 0
-    try:
-        result = (
-            admin.table("ai_paid_purchases")
-            .select("uses")
-            .eq("visitor_id", visitor_id)
-            .execute()
-        )
-        return sum(int(row.get("uses", 0) or 0) for row in (result.data or []))
-    except Exception as error:
-        print("Paid AI usage lookup failed:", repr(error))
-        return 0
+    return int(result.get("uses", 0) or 0)
 
 
 def register_paid_ai(app, base_supabase, visitor_id_func):
     """Register Stripe Checkout/webhook routes and connect paid uses to AI limits."""
     import sys
 
-    # server.py is already executing when this function is called. Use the
-    # existing module object so local `python server.py` does not import a second
-    # copy of the application module.
     server_module = sys.modules.get("server") or sys.modules.get("__main__")
     if server_module is not None and not getattr(server_module, "_paid_ai_usage_wrapped", False):
         original_get_ai_usage = server_module.get_ai_usage
@@ -78,7 +74,7 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
 
     @app.get("/api/ai/paid/config")
     def paid_ai_config():
-        configured = bool(stripe_client and SUPABASE_SERVICE_ROLE_KEY)
+        configured = bool(stripe_client and PAID_AI_FUNCTION_URL and PAID_AI_FUNCTION_SECRET)
         return jsonify({
             "enabled": PAID_AI_ENABLED and configured,
             "uses": PAID_AI_PACK_USES,
@@ -92,7 +88,7 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
             return jsonify({"error": "Paid AI uses are currently disabled."}), 403
         if stripe_client is None:
             return jsonify({"error": "Stripe payments are not configured on the server."}), 503
-        if SUPABASE_SERVICE_ROLE_KEY is None:
+        if not PAID_AI_FUNCTION_URL or not PAID_AI_FUNCTION_SECRET:
             return jsonify({"error": "Paid AI storage is not configured on the server."}), 503
 
         try:
@@ -155,25 +151,14 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
                 print("Rejected Stripe AI purchase with unexpected metadata/amount:", session.get("id"))
                 return jsonify({"error": "Invalid purchase details."}), 400
 
-            admin = _admin_supabase(base_supabase)
-            if admin is None:
-                return jsonify({"error": "Supabase service role is not configured."}), 503
-
-            try:
-                admin.table("ai_paid_purchases").insert({
-                    "stripe_session_id": session["id"],
-                    "visitor_id": visitor_id,
-                    "uses": uses,
-                    "amount_paid": amount,
-                    "currency": currency,
-                }).execute()
-            except Exception as error:
-                # Stripe may retry a webhook. A unique session ID makes retries
-                # harmless; report the error but acknowledge an already-recorded
-                # purchase rather than granting it twice.
-                message = str(error).lower()
-                if "duplicate" not in message and "unique" not in message:
-                    print("Could not record paid AI purchase:", repr(error))
-                    return jsonify({"error": "Could not record the purchase."}), 500
+            recorded = _paid_ai_function("record", {
+                "stripe_session_id": session["id"],
+                "visitor_id": visitor_id,
+                "uses": uses,
+                "amount_paid": amount,
+                "currency": currency,
+            })
+            if not recorded or not recorded.get("ok"):
+                return jsonify({"error": "Could not record the purchase."}), 500
 
         return jsonify({"received": True}), 200
