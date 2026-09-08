@@ -10,7 +10,15 @@ except ImportError:  # pragma: no cover
     stripe = None
 
 
-PAID_AI_ENABLED = True
+def _env_bool(name, default=False):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Paid AI is completely disabled unless PAID_AI_ENABLED is explicitly true.
+PAID_AI_ENABLED = _env_bool("PAID_AI_ENABLED", False)
 PAID_AI_PACK_USES = 50
 PAID_AI_PACK_PRICE_PENCE = 499
 PAID_AI_CURRENCY = "gbp"
@@ -26,7 +34,7 @@ if stripe_client:
 
 
 def _paid_ai_function(action, payload):
-    if not PAID_AI_FUNCTION_URL or not PAID_AI_FUNCTION_SECRET:
+    if not PAID_AI_ENABLED or not PAID_AI_FUNCTION_URL or not PAID_AI_FUNCTION_SECRET:
         return None
     body = json.dumps({"action": action, **payload}).encode("utf-8")
     req = Request(
@@ -51,7 +59,10 @@ def get_paid_uses(visitor_id, base_supabase):
     result = _paid_ai_function("get", {"visitor_id": visitor_id})
     if not result:
         return 0
-    return int(result.get("uses", 0) or 0)
+    try:
+        return max(0, int(result.get("uses", 0) or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def register_paid_ai(app, base_supabase, visitor_id_func):
@@ -67,7 +78,10 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
             if infinite or not PAID_AI_ENABLED:
                 return used, infinite
             paid_uses = get_paid_uses(visitor_id, base_supabase)
-            return max(0, used - paid_uses), False
+            # Keep purchased uses as negative effective usage until they are consumed.
+            # This makes the existing AI_MAX_USES limit naturally become
+            # AI_MAX_USES + purchased uses.
+            return used - paid_uses, False
 
         server_module.get_ai_usage = get_ai_usage_with_paid
         server_module._paid_ai_usage_wrapped = True
@@ -119,6 +133,8 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
 
     @app.post("/api/stripe/webhook")
     def stripe_webhook():
+        if not PAID_AI_ENABLED:
+            return jsonify({"received": True})
         if stripe_client is None or not STRIPE_WEBHOOK_SECRET:
             return jsonify({"error": "Stripe webhook is not configured."}), 503
 
