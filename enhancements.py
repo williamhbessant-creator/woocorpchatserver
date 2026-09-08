@@ -1,6 +1,8 @@
 from flask import request, jsonify
 from threading import Lock
 
+from payments import register_paid_ai
+
 
 class Presence:
     def __init__(self):
@@ -47,6 +49,11 @@ def register_enhancements(app, socketio, supabase, visitor_id_func, openai_clien
 
         openai_client.responses.create = create_with_memory
         openai_client._woocorp_memory_wrapped = True
+
+    # Paid AI is controlled by PAID_AI_ENABLED in payments.py. The payment
+    # module also wraps the existing AI usage lookup so purchased uses extend
+    # the normal server-side limit without trusting browser state.
+    register_paid_ai(app, supabase, visitor_id_func)
 
     def broadcast_presence():
         users = presence.list_users()
