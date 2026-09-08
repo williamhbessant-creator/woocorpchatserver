@@ -16,5 +16,5 @@ create index if not exists ai_paid_purchases_visitor_id_idx
 alter table public.ai_paid_purchases enable row level security;
 
 -- The browser must never be able to read or write purchase records.
--- server.py uses SUPABASE_SERVICE_ROLE_KEY for payment records.
+-- The Supabase Edge Function uses the service-role key internally.
 revoke all on public.ai_paid_purchases from anon, authenticated;
