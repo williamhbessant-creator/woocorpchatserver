@@ -9,7 +9,7 @@ except ImportError:  # pragma: no cover
     stripe = None
 
 
-PAID_AI_ENABLED = True
+PAID_AI_ENABLED = false
 PAID_AI_PACK_USES = 10
 PAID_AI_PACK_PRICE_PENCE = 678
 PAID_AI_CURRENCY = "USD"
