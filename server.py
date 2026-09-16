@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from flask_socketio import SocketIO, emit
 import os
 from datetime import datetime
@@ -71,6 +71,26 @@ def index():
     return render_template("index.html")
 
 
+@app.get("/robots.txt")
+def robots_txt():
+    """Tell search engines that the public homepage may be crawled."""
+    content = "User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: https://woocorpchatserver.onrender.com/sitemap.xml\n"
+    return Response(content, mimetype="text/plain")
+
+
+@app.get("/sitemap.xml")
+def sitemap_xml():
+    """Provide the canonical public URL to search engines."""
+    content = '''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://woocorpchatserver.onrender.com/</loc>
+  </url>
+</urlset>
+'''
+    return Response(content, mimetype="application/xml")
+
+
 @app.get("/api/ai/usage")
 def ai_usage():
     try:
@@ -105,249 +125,3 @@ def ai_history():
     except Exception as error:
         print("AI history lookup failed:", repr(error))
         return jsonify({"error": "Could not load AI chat history."}), 500
-
-
-@app.get("/api/ai/history/<conversation_id>")
-def ai_history_messages(conversation_id):
-    conversation_id = valid_conversation_id(conversation_id)
-    if not conversation_id:
-        return jsonify({"error": "Invalid conversation ID."}), 400
-    try:
-        visitor_id = ai_user_id()
-        messages = get_messages(supabase, visitor_id, conversation_id)
-        return jsonify({"messages": messages})
-    except Exception as error:
-        print("AI conversation load failed:", repr(error))
-        return jsonify({"error": "Could not load that AI conversation."}), 500
-
-
-@app.post("/api/ai/history")
-def create_ai_history():
-    try:
-        data = request.get_json(silent=True) or {}
-        title = str(data.get("title", "New Chat")).strip()[:100] or "New Chat"
-        conversation_id = create_conversation(supabase, ai_user_id(), title)
-        return jsonify({"conversation_id": conversation_id, "title": title}), 201
-    except Exception as error:
-        print("AI conversation creation failed:", repr(error))
-        return jsonify({"error": "Could not create a new AI chat."}), 500
-
-
-@app.patch("/api/ai/history/<conversation_id>")
-def rename_ai_history(conversation_id):
-    conversation_id = valid_conversation_id(conversation_id)
-    if not conversation_id:
-        return jsonify({"error": "Invalid conversation ID."}), 400
-    try:
-        data = request.get_json(silent=True) or {}
-        title = str(data.get("title", "New Chat")).strip()[:100] or "New Chat"
-        if not rename_conversation(supabase, ai_user_id(), conversation_id, title):
-            return jsonify({"error": "Conversation not found."}), 404
-        return jsonify({"title": title})
-    except Exception as error:
-        print("AI conversation rename failed:", repr(error))
-        return jsonify({"error": "Could not rename that AI chat."}), 500
-
-
-@app.delete("/api/ai/history/<conversation_id>")
-def delete_ai_history(conversation_id):
-    conversation_id = valid_conversation_id(conversation_id)
-    if not conversation_id:
-        return jsonify({"error": "Invalid conversation ID."}), 400
-    try:
-        if not delete_conversation(supabase, ai_user_id(), conversation_id):
-            return jsonify({"error": "Conversation not found."}), 404
-        return jsonify({"deleted": True})
-    except Exception as error:
-        print("AI conversation deletion failed:", repr(error))
-        return jsonify({"error": "Could not delete that AI chat."}), 500
-
-
-@app.post("/api/ai")
-def ai_assistant():
-    if openai_client is None:
-        return jsonify({"error": "AI_KEY is not configured on the server."}), 500
-    visitor_id = ai_user_id()
-    try:
-        used, infinite = get_ai_usage(visitor_id)
-        message_count = get_user_message_count(message_owner_id())
-
-        if not infinite and message_count < AI_REQUIRED_MESSAGES:
-            return jsonify({
-                "error": f"Send {AI_REQUIRED_MESSAGES - message_count} more message(s) in the public chat before using the AI.",
-                "message_count": message_count,
-                "required_messages": AI_REQUIRED_MESSAGES,
-                "ai_unlocked": False,
-                "infinite": False
-            }), 403
-
-        if not infinite and used >= AI_MAX_USES:
-            return jsonify({"error": "You have no AI uses remaining.", "uses_remaining": 0, "unlimited": False, "infinite": False}), 429
-
-        data = request.get_json(silent=True) or {}
-        message = str(data.get("message", "")).strip()
-        conversation_id = valid_conversation_id(data.get("conversation_id")) if data.get("conversation_id") else None
-        if not message:
-            return jsonify({"error": "Please enter a message."}), 400
-        if len(message) > 2000:
-            return jsonify({"error": "Message is too long."}), 400
-
-        if conversation_id:
-            existing = get_messages(supabase, visitor_id, conversation_id)
-            if not existing and data.get("conversation_id"):
-                pass
-        else:
-            title = message.replace("\n", " ").strip()
-            if len(title) > 60:
-                title = title[:57].rstrip() + "..."
-            conversation_id = create_conversation(supabase, visitor_id, title or "New Chat")
-            existing = []
-
-        conversation = []
-        for item in existing[-12:]:
-            if isinstance(item, dict) and item.get("role") in ("user", "assistant") and str(item.get("content", "")).strip():
-                conversation.append({"role": item["role"], "content": str(item["content"])[:4000]})
-        conversation.append({"role": "user", "content": message})
-
-        response = openai_client.responses.create(
-            model="gpt-4.1-mini",
-            instructions="You are the AI assistant inside Woocorp Public Chat. Be helpful, concise, friendly, and clear.",
-            input=conversation,
-        )
-        reply = response.output_text
-
-        save_message(supabase, visitor_id, conversation_id, "user", message)
-        save_message(supabase, visitor_id, conversation_id, "assistant", reply)
-
-        if infinite:
-            remaining = "∞"
-        else:
-            used = increment_ai_uses(visitor_id)
-            remaining = max(0, AI_MAX_USES - used)
-        return jsonify({"response": reply, "uses_remaining": remaining, "unlimited": infinite, "infinite": infinite, "conversation_id": conversation_id})
-    except Exception as error:
-        print("AI request failed:", repr(error))
-        return jsonify({"error": "The AI assistant could not get a response."}), 502
-
-
-@socketio.on("request_history")
-def send_history():
-    try:
-        response = (supabase.table("messageport5555").select("id, username, message, timestamp, protected, owner_ip_hash").order("id").limit(500).execute())
-        rows = [
-            (row["id"], row["username"], row["message"], row["timestamp"], bool(row.get("protected", False)), row.get("owner_ip_hash") == message_owner_id())
-            for row in response.data
-        ]
-        emit("chat_history", rows)
-    except Exception as error:
-        print("History load failed:", repr(error))
-        emit("message_action_error", {"error": f"Could not load chat messages: {error}"})
-
-
-@socketio.on("send_message")
-def handle_message(data):
-    try:
-        username = str(data.get("username", "")).strip()[:20]
-        message = str(data.get("message", "")).strip()[:500]
-        if not username:
-            emit("message_action_error", {"error": "Please enter a username."}); return
-        if not message:
-            emit("message_action_error", {"error": "Please enter a message."}); return
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        owner_hash = message_owner_id()
-        supabase.table("messageport5555").insert({"username": username, "message": message, "timestamp": timestamp, "owner_ip_hash": owner_hash}).execute()
-        result = (supabase.table("messageport5555").select("id, username, message, timestamp, protected, owner_ip_hash").eq("username", username).eq("message", message).eq("timestamp", timestamp).eq("owner_ip_hash", owner_hash).order("id", desc=True).limit(1).execute())
-        if not result.data: raise RuntimeError("Message was inserted but could not be read back from Supabase.")
-        row = result.data[0]
-        socketio.emit("new_message", {"id": row["id"], "username": row["username"], "message": row["message"], "timestamp": row["timestamp"], "protected": bool(row.get("protected", False)), "can_manage": True})
-        emit("message_count_updated", {"message_count": get_user_message_count(owner_hash), "required_messages": AI_REQUIRED_MESSAGES})
-    except Exception as error:
-        print("Send message failed:", repr(error))
-        emit("message_action_error", {"error": f"Could not send the message: {error}"})
-
-
-@socketio.on("delete_message")
-def delete_message(data):
-    try:
-        message_id = int(data.get("id"))
-        result = supabase.table("messageport5555").select("id, protected").eq("id", message_id).maybe_single().execute()
-        if not result.data:
-            emit("message_action_error", {"error": "Message not found."}); return
-        if bool(result.data.get("protected", False)):
-            emit("message_action_error", {"error": "That message is protected from deletion."}); return
-        supabase.table("messageport5555").delete().eq("id", message_id).execute()
-        socketio.emit("message_deleted", {"id": message_id})
-    except Exception as error:
-        print("Delete message failed:", repr(error))
-        emit("message_action_error", {"error": f"Could not delete the message: {error}"})
-
-
-@socketio.on("delete_messages")
-def delete_messages(data):
-    try:
-        raw_ids = data.get("ids", []) if isinstance(data, dict) else []
-        ids = []
-        for value in raw_ids:
-            try:
-                message_id = int(value)
-                if message_id not in ids: ids.append(message_id)
-            except (TypeError, ValueError):
-                continue
-        if not ids:
-            emit("message_action_error", {"error": "No messages were selected."}); return
-        result = supabase.table("messageport5555").select("id, protected").in_("id", ids).execute()
-        found = {int(row["id"]): bool(row.get("protected", False)) for row in (result.data or [])}
-        deletable = [message_id for message_id in ids if message_id in found and not found[message_id]]
-        if deletable:
-            supabase.table("messageport5555").delete().in_("id", deletable).execute()
-        socketio.emit("messages_deleted", {"ids": deletable})
-        protected_count = sum(1 for message_id in ids if found.get(message_id) is True)
-        missing_count = sum(1 for message_id in ids if message_id not in found)
-        if protected_count or missing_count:
-            emit("message_action_error", {"error": f"{protected_count} protected and {missing_count} missing message(s) were skipped."})
-    except Exception as error:
-        print("Bulk delete messages failed:", repr(error))
-        emit("message_action_error", {"error": f"Could not delete selected messages: {error}"})
-
-
-@socketio.on("toggle_message_protection")
-def toggle_message_protection(data):
-    try:
-        message_id = int(data.get("id"))
-        result = supabase.table("messageport5555").select("id, protected, owner_ip_hash").eq("id", message_id).maybe_single().execute()
-        if not result.data:
-            emit("message_action_error", {"error": "Message not found."}); return
-        row = result.data
-        if row.get("owner_ip_hash") != message_owner_id():
-            emit("message_action_error", {"error": "Only the person who sent this message can protect or unprotect it."}); return
-        new_protected = not bool(row.get("protected", False))
-        supabase.table("messageport5555").update({"protected": new_protected}).eq("id", message_id).execute()
-        socketio.emit("message_protection_changed", {"id": message_id, "protected": new_protected})
-    except Exception as error:
-        print("Protection change failed:", repr(error))
-        emit("message_action_error", {"error": f"Could not change message protection: {error}"})
-
-
-@socketio.on("clear_history")
-def clear_history():
-    try:
-        supabase.table("messageport5555").delete().eq("protected", False).execute()
-        socketio.emit("history_cleared")
-    except Exception as error:
-        print("Clear history failed:", repr(error))
-        emit("message_action_error", {"error": f"Could not clear the chat: {error}"})
-
-
-# Register the live presence, typing, reactions, and WAI memory Socket.IO/HTTP features.
-register_enhancements(app, socketio, supabase, ai_user_id, openai_client)
-
-
-if __name__ == "__main__":
-    print("=" * 45)
-    print(" Public Chat Server")
-    print("=" * 45)
-    print("Port: 5555")
-    print("Database:", SUPABASE_URL)
-    print("AI:", "enabled" if AI_KEY else "disabled - AI_KEY missing")
-    print("=" * 45)
-    socketio.run(app, host="0.0.0.0", port=5555)
