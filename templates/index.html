@@ -3,9 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Woocorp Public Chat</title>
+    <title>Woocorp Chat — Public Chat & AI Assistant</title>
+    <meta name="description" content="Woocorp Chat is a public online chat with WAI, an AI assistant for asking questions and getting help.">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <link rel="canonical" href="https://woocorpchatserver.onrender.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Woocorp Chat — Public Chat & AI Assistant">
+    <meta property="og:description" content="Join Woocorp Chat, a public online chat with WAI, an AI assistant for questions and help.">
+    <meta property="og:url" content="https://woocorpchatserver.onrender.com/">
+    <meta property="og:image" content="https://woocorpchatserver.onrender.com/static/woocorplogo.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Woocorp Chat — Public Chat & AI Assistant">
+    <meta name="twitter:description" content="Public online chat with WAI, an AI assistant for questions and help.">
+    <link rel="icon" href="{{ url_for('static', filename='woocorplogo.png') }}" type="image/png">
     <link id="themeStylesheet" rel="stylesheet" href="{{ url_for('static', filename='darkstyle.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='enhancements.css') }}">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Woocorp Chat",
+      "url": "https://woocorpchatserver.onrender.com/",
+      "description": "A public online chat with WAI, an AI assistant for questions and help.",
+      "applicationCategory": "CommunicationApplication",
+      "operatingSystem": "Web Browser",
+      "image": "https://woocorpchatserver.onrender.com/static/woocorplogo.png"
+    }
+    </script>
 </head>
 <body>
     <div class="container">
