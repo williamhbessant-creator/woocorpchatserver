@@ -19,6 +19,7 @@ from enhancements import register_enhancements
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
+AI_TYPE = os.environ["AI_TYPE"]
 AI_KEY = os.environ.get("AI_KEY")
 AI_MAX_USES = 5
 AI_REQUIRED_MESSAGES = 2
