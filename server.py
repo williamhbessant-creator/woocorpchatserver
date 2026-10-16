@@ -360,7 +360,7 @@ def clear_history():
 
 # Register the live presence, typing, reactions, and WAI memory Socket.IO/HTTP features.
 register_enhancements(app, socketio, supabase, ai_user_id, openai_client)
-register_audio_routes(app, SUPABASE_URL)
+register_audio_routes(app, SUPABASE_URL, SUPABASE_KEY)
 
 
 if __name__ == "__main__":
