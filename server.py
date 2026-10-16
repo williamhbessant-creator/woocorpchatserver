@@ -16,6 +16,7 @@ from ai_history import (
     delete_conversation,
 )
 from enhancements import register_enhancements
+from audio_messages import register_audio_routes
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_PUBLISHABLE_KEY"]
@@ -359,6 +360,7 @@ def clear_history():
 
 # Register the live presence, typing, reactions, and WAI memory Socket.IO/HTTP features.
 register_enhancements(app, socketio, supabase, ai_user_id, openai_client)
+register_audio_routes(app, SUPABASE_URL)
 
 
 if __name__ == "__main__":
