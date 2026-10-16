@@ -22,6 +22,25 @@ MIME_EXTENSIONS = {
 def register_audio_routes(app, supabase_url):
     secret = os.environ.get("SUPABASE_SECRET_KEY")
     storage_client = create_client(supabase_url, secret) if secret else None
+    if storage_client is not None:
+        try:
+            buckets = storage_client.storage.list_buckets()
+            bucket_names = {
+                (item.get("name") if isinstance(item, dict) else getattr(item, "name", None))
+                for item in (buckets or [])
+            }
+            if BUCKET not in bucket_names:
+                storage_client.storage.create_bucket(
+                    BUCKET,
+                    options={
+                        "public": False,
+                        "file_size_limit": MAX_BYTES,
+                        "allowed_mime_types": list(MIME_EXTENSIONS.keys()),
+                    },
+                )
+        except Exception:
+            # Do not prevent the existing chat from starting if Storage needs setup.
+            app.logger.exception("Could not ensure the private audio-messages bucket exists")
 
     def owner_id():
         if "audio_owner_id" not in session:
