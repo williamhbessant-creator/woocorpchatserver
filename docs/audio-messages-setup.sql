@@ -9,3 +9,4 @@ create table if not exists public.audio_messages (
 );
 alter table public.audio_messages enable row level security;
 revoke all on table public.audio_messages from anon, authenticated;
+grant all on table public.audio_messages to service_role;
