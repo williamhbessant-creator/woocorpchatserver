@@ -36,7 +36,7 @@
     <div class="container">
         <header>
             <h1>Woocorp Chat</h1>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a href="#homeVoiceMessages" style="color:inherit;text-decoration:none;padding:9px 12px;border:1px solid currentColor;border-radius:8px">🎙 Voice messages</a><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="voicePanelToggle" type="button" aria-expanded="false" aria-controls="homeVoiceMessages">🎙 Voice messages</button><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
         </header>
 
         <div id="chat-box"></div>
@@ -45,6 +45,7 @@
             <input type="text" id="username" placeholder="Username" maxlength="20" autocomplete="off">
             <input type="text" id="message" placeholder="Type your message..." maxlength="500" autocomplete="off">
             <button id="sendButton" type="button">Send</button>
+            <button id="voicePanelToggleInline" type="button" aria-expanded="false" aria-controls="homeVoiceMessages" title="Record a voice message">🎙 Voice</button>
             <button id="themeButton" type="button">
                 <img src="{{ url_for('static', filename='icons8-light-48.png') }}" alt="" class="theme-icon">
                 Theme
@@ -52,7 +53,7 @@
             <button id="clearButton" type="button">Clear Chat</button>
         </div>
 
-        <section id="homeVoiceMessages" class="home-audio-section" aria-labelledby="homeAudioTitle">
+        <section id="homeVoiceMessages" class="home-audio-section" aria-labelledby="homeAudioTitle" hidden>
             <header class="audio-heading">
                 <p class="eyebrow">WOOCORP CHAT</p>
                 <h2 id="homeAudioTitle">Voice messages</h2>
