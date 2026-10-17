@@ -13,6 +13,15 @@
   const listStatus = $("listStatus");
   const recordingList = $("recordingList");
   let recorder = null, stream = null, chunks = [], recordingBlob = null;
+  const voicePanel = $("homeVoiceMessages");
+  const voiceToggles = [$("voicePanelToggle"), $("voicePanelToggleInline")].filter(Boolean);
+  function setVoicePanelOpen(open) {
+    voicePanel.hidden = !open;
+    voiceToggles.forEach(button => button.setAttribute("aria-expanded", String(open)));
+    if (open) voicePanel.scrollIntoView({behavior:"smooth", block:"nearest"});
+  }
+  voiceToggles.forEach(button => button.addEventListener("click", () => setVoicePanelOpen(voicePanel.hidden)));
+
   let recordingStarted = 0, recordingDuration = 0, timerHandle = null, previewUrl = null, uploading = false;
 
   const formatTime = seconds => {
