@@ -38,3 +38,13 @@
 #homeVoiceMessages .error-text{color:#ff8c8c}
 @keyframes home-audio-pulse{50%{box-shadow:0 0 0 8px #e4585810}}
 @media(max-width:520px){#homeVoiceMessages .saved-heading{align-items:flex-start}#homeVoiceMessages .primary-button,#homeVoiceMessages .secondary-button{padding:10px 12px}}
+
+/* Compact composer button and collapsible inline voice panel */
+#voicePanelToggle,#voicePanelToggleInline{color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:9px 12px;font:inherit;cursor:pointer;white-space:nowrap}
+#homeVoiceMessages[hidden]{display:none!important}
+#homeVoiceMessages{margin:12px 0 18px}
+#homeVoiceMessages .audio-heading{margin-bottom:10px}
+#homeVoiceMessages .audio-heading h2{font-size:22px}
+#homeVoiceMessages .audio-heading p:last-child{font-size:13px}
+#homeVoiceMessages .recorder-card,#homeVoiceMessages .saved-section{margin:10px 0;padding:16px}
+@media(max-width:600px){#voicePanelToggle{padding:8px 10px}#voicePanelToggleInline{padding:8px 10px}}
