@@ -69,7 +69,7 @@
 
   async function saveRecording() {
     if (!recordingBlob || uploading) return;
-    uploading = true; saveButton.disabled = true; recordButton.disabled = true; setStatus("Saving recording to cloud storage…");
+    uploading = true; saveButton.disabled = true; recordButton.disabled = true; setStatus("Sending voice message…");
     try {
       const form = new FormData();
       const type = recordingBlob.type.toLowerCase();
@@ -80,7 +80,7 @@
       const response = await fetch("/api/audio", {method:"POST", body:form});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Upload failed.");
-      resetPreview(); titleInput.value = ""; setStatus("Recording saved"); await loadRecordings();
+      resetPreview(); titleInput.value = ""; setStatus("Voice message sent"); await loadRecordings();
     } catch (error) {
       setStatus(error.message || "Could not save the recording.");
       saveButton.disabled = false; recordButton.disabled = false;
@@ -122,10 +122,10 @@
       if (!response.ok) throw new Error(data.error || "Could not load recordings.");
       const messages = data.messages || [];
       if (!messages.length) {
-        listStatus.textContent = "No saved recordings yet. Record your first voice message above.";
-        const empty = document.createElement("div"); empty.className = "empty-state"; empty.textContent = "Your saved recordings will appear here."; recordingList.appendChild(empty);
+        listStatus.textContent = "No voice messages yet. Record and send the first one!";
+        const empty = document.createElement("div"); empty.className = "empty-state"; empty.textContent = "Sent voice messages will appear here."; recordingList.appendChild(empty);
       } else {
-        listStatus.textContent = messages.length + " saved recording" + (messages.length === 1 ? "" : "s");
+        listStatus.textContent = messages.length + " voice message" + (messages.length === 1 ? "" : "s");
         messages.forEach(item => recordingList.appendChild(renderRecording(item)));
       }
     } catch (error) { listStatus.textContent = error.message || "Could not load saved recordings."; listStatus.classList.add("error-text"); }
