@@ -18,6 +18,7 @@
     <link rel="icon" href="{{ url_for('static', filename='woocorplogo.png') }}" type="image/png">
     <link id="themeStylesheet" rel="stylesheet" href="{{ url_for('static', filename='darkstyle.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='enhancements.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='home-audio.css') }}">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -35,7 +36,7 @@
     <div class="container">
         <header>
             <h1>Woocorp Chat</h1>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a href="/audio" style="color:inherit;text-decoration:none;padding:9px 12px;border:1px solid currentColor;border-radius:8px">🎙 Voice messages</a><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><a href="#homeVoiceMessages" style="color:inherit;text-decoration:none;padding:9px 12px;border:1px solid currentColor;border-radius:8px">🎙 Voice messages</a><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
         </header>
 
         <div id="chat-box"></div>
@@ -50,6 +51,28 @@
             </button>
             <button id="clearButton" type="button">Clear Chat</button>
         </div>
+
+        <section id="homeVoiceMessages" class="home-audio-section" aria-labelledby="homeAudioTitle">
+            <header class="audio-heading">
+                <p class="eyebrow">WOOCORP CHAT</p>
+                <h2 id="homeAudioTitle">Voice messages</h2>
+                <p>Record a voice message and send it straight to the chat community.</p>
+            </header>
+            <section class="recorder-card" aria-labelledby="recorder-title">
+                <h3 id="recorder-title">Record a message</h3>
+                <label for="recordingTitle">Message title <span>(optional)</span></label>
+                <input id="recordingTitle" type="text" maxlength="80" placeholder="e.g. Hello everyone">
+                <div class="record-status"><span id="recordDot" class="record-dot"></span><span id="recordStatus" role="status">Ready to record</span><span id="recordTimer">00:00</span></div>
+                <div class="recorder-actions"><button id="recordButton" class="primary-button" type="button">● Start recording</button><button id="stopButton" class="secondary-button" type="button" disabled>■ Stop</button></div>
+                <div id="previewArea" class="preview-area" hidden><p class="preview-label">Preview your voice message</p><audio id="previewAudio" controls></audio><div class="recorder-actions"><button id="saveButton" class="primary-button" type="button">Send voice message</button><button id="discardButton" class="secondary-button" type="button">Discard</button></div></div>
+                <p class="privacy-note">Voice messages are public: anyone visiting this page can listen to them. Don’t record private or sensitive information. Messages can’t be deleted from this page.</p>
+            </section>
+            <section class="saved-section" aria-labelledby="savedAudioTitle">
+                <div class="saved-heading"><div><h3 id="savedAudioTitle">Recent voice messages</h3><p>Latest 100 messages</p></div><button id="refreshButton" class="secondary-button" type="button">Refresh</button></div>
+                <p id="listStatus" class="list-status" role="status">Loading voice messages…</p>
+                <div id="recordingList" class="recording-list"></div>
+            </section>
+        </section>
     </div>
 
     <div id="aiOverlay" class="ai-overlay" aria-hidden="true"></div>
@@ -93,5 +116,6 @@
     <script src="{{ url_for('static', filename='enhancements.js') }}"></script>
     <script src="{{ url_for('static', filename='paidai.js') }}"></script>
     <script src="{{ url_for('static', filename='clearfix.js') }}"></script>
+    <script src="{{ url_for('static', filename='audio.js') }}" defer></script>
 </body>
 </html>
