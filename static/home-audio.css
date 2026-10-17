@@ -1,0 +1,40 @@
+/* Homepage-only voice recorder styles; scoped to avoid changing the chat theme. */
+#homeVoiceMessages{margin:28px 0 10px;color:var(--text,#f4f6fa)}
+#homeVoiceMessages *{box-sizing:border-box}
+#homeVoiceMessages [hidden]{display:none!important}
+#homeVoiceMessages .audio-heading{margin:0 0 18px}
+#homeVoiceMessages .eyebrow{font-size:12px;font-weight:700;letter-spacing:.17em;color:#80bdf0;margin:0 0 7px}
+#homeVoiceMessages .audio-heading h2{font-size:clamp(25px,4vw,34px);margin:0 0 8px;letter-spacing:-.03em}
+#homeVoiceMessages .audio-heading p:last-child{color:var(--muted,#aab4c4);line-height:1.6;margin:0}
+#homeVoiceMessages .recorder-card,#homeVoiceMessages .saved-section{border:1px solid var(--line,#343d4b);border-radius:16px;background:var(--card,#202632);padding:clamp(16px,3vw,24px);margin:16px 0;box-shadow:0 12px 32px #0002}
+#homeVoiceMessages h3{font-size:19px;margin:0 0 17px}
+#homeVoiceMessages label{display:block;margin-bottom:8px;font-size:14px;font-weight:700}
+#homeVoiceMessages label span{font-weight:400;color:var(--muted,#aab4c4)}
+#homeVoiceMessages #recordingTitle{width:100%;border:1px solid #465164;border-radius:9px;background:#171c25;color:inherit;padding:12px 13px;font:inherit}
+#homeVoiceMessages #recordingTitle:focus{outline:2px solid #79b9f1;outline-offset:1px}
+#homeVoiceMessages .record-status{display:flex;align-items:center;gap:10px;margin:18px 0 14px;color:var(--muted,#aab4c4);font-size:14px}
+#homeVoiceMessages .record-dot{width:10px;height:10px;flex:0 0 10px;border-radius:50%;background:#667386}
+#homeVoiceMessages .record-dot.live{background:#e45858;box-shadow:0 0 0 5px #e4585824;animation:home-audio-pulse 1.2s infinite}
+#homeVoiceMessages #recordTimer{margin-left:auto;font-variant-numeric:tabular-nums;color:inherit;font-weight:700}
+#homeVoiceMessages .recorder-actions{display:flex;flex-wrap:wrap;gap:9px}
+#homeVoiceMessages .primary-button,#homeVoiceMessages .secondary-button,#homeVoiceMessages .delete-button{border:0;border-radius:9px;padding:11px 15px;min-height:42px;font:inherit;font-weight:700;cursor:pointer}
+#homeVoiceMessages .primary-button{background:#4b8fc8;color:#fff}
+#homeVoiceMessages .secondary-button{background:#343d4b;color:inherit;border:1px solid #4a5566}
+#homeVoiceMessages button:disabled{opacity:.5;cursor:not-allowed}
+#homeVoiceMessages .preview-area{margin-top:18px;padding-top:16px;border-top:1px solid var(--line,#343d4b)}
+#homeVoiceMessages .preview-label{margin:0 0 9px;font-size:14px;font-weight:700}
+#homeVoiceMessages audio{display:block;width:100%;margin:8px 0 14px}
+#homeVoiceMessages .privacy-note{margin:17px 0 0;color:var(--muted,#aab4c4);font-size:12px;line-height:1.55}
+#homeVoiceMessages .saved-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#homeVoiceMessages .saved-heading h3{margin:0 0 5px}
+#homeVoiceMessages .saved-heading p{margin:0 0 12px;color:var(--muted,#aab4c4);font-size:13px}
+#homeVoiceMessages .list-status{color:var(--muted,#aab4c4);font-size:13px}
+#homeVoiceMessages .recording-list{display:grid;gap:10px}
+#homeVoiceMessages .recording-card{min-width:0;border:1px solid var(--line,#343d4b);border-radius:11px;padding:14px;background:#171c25}
+#homeVoiceMessages .recording-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+#homeVoiceMessages .recording-title{font-weight:700;overflow-wrap:anywhere}
+#homeVoiceMessages .recording-meta{font-size:12px;color:var(--muted,#aab4c4);margin-top:5px}
+#homeVoiceMessages .empty-state{padding:16px;border:1px dashed var(--line,#343d4b);border-radius:10px;color:var(--muted,#aab4c4);font-size:14px}
+#homeVoiceMessages .error-text{color:#ff8c8c}
+@keyframes home-audio-pulse{50%{box-shadow:0 0 0 8px #e4585810}}
+@media(max-width:520px){#homeVoiceMessages .saved-heading{align-items:flex-start}#homeVoiceMessages .primary-button,#homeVoiceMessages .secondary-button{padding:10px 12px}}
