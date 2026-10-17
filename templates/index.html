@@ -36,16 +36,18 @@
     <div class="container">
         <header>
             <h1>Woocorp Chat</h1>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="voicePanelToggle" type="button" aria-expanded="false" aria-controls="homeVoiceMessages">🎙 Voice messages</button><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
         </header>
 
         <div id="chat-box"></div>
 
         <div class="controls">
             <input type="text" id="username" placeholder="Username" maxlength="20" autocomplete="off">
-            <input type="text" id="message" placeholder="Type your message..." maxlength="500" autocomplete="off">
-            <button id="sendButton" type="button">Send</button>
-            <button id="voicePanelToggleInline" type="button" aria-expanded="false" aria-controls="homeVoiceMessages" title="Record a voice message">🎙 Voice</button>
+            <div class="message-composer">
+                <input type="text" id="message" placeholder="Type your message..." maxlength="500" autocomplete="off">
+                <button id="sendButton" type="button">Send</button>
+                <button id="voiceRecordButton" type="button" title="Record a voice message" aria-label="Record a voice message">🎙</button>
+            </div>
             <button id="themeButton" type="button">
                 <img src="{{ url_for('static', filename='icons8-light-48.png') }}" alt="" class="theme-icon">
                 Theme
@@ -53,26 +55,10 @@
             <button id="clearButton" type="button">Clear Chat</button>
         </div>
 
-        <section id="homeVoiceMessages" class="home-audio-section" aria-labelledby="homeAudioTitle" hidden>
-            <header class="audio-heading">
-                <p class="eyebrow">WOOCORP CHAT</p>
-                <h2 id="homeAudioTitle">Voice messages</h2>
-                <p>Record a voice message and send it straight to the chat community.</p>
-            </header>
-            <section class="recorder-card" aria-labelledby="recorder-title">
-                <h3 id="recorder-title">Record a message</h3>
-                <label for="recordingTitle">Message title <span>(optional)</span></label>
-                <input id="recordingTitle" type="text" maxlength="80" placeholder="e.g. Hello everyone">
-                <div class="record-status"><span id="recordDot" class="record-dot"></span><span id="recordStatus" role="status">Ready to record</span><span id="recordTimer">00:00</span></div>
-                <div class="recorder-actions"><button id="recordButton" class="primary-button" type="button">● Start recording</button><button id="stopButton" class="secondary-button" type="button" disabled>■ Stop</button></div>
-                <div id="previewArea" class="preview-area" hidden><p class="preview-label">Preview your voice message</p><audio id="previewAudio" controls></audio><div class="recorder-actions"><button id="saveButton" class="primary-button" type="button">Send voice message</button><button id="discardButton" class="secondary-button" type="button">Discard</button></div></div>
-                <p class="privacy-note">Voice messages are public: anyone visiting this page can listen to them. Don’t record private or sensitive information. Messages can’t be deleted from this page.</p>
-            </section>
-            <section class="saved-section" aria-labelledby="savedAudioTitle">
-                <div class="saved-heading"><div><h3 id="savedAudioTitle">Recent voice messages</h3><p>Latest 100 messages</p></div><button id="refreshButton" class="secondary-button" type="button">Refresh</button></div>
-                <p id="listStatus" class="list-status" role="status">Loading voice messages…</p>
-                <div id="recordingList" class="recording-list"></div>
-            </section>
+        <section id="inlineVoiceComposer" class="inline-voice-composer" hidden aria-label="Voice message recorder">
+            <div class="inline-voice-status"><span id="inlineVoiceDot"></span><span id="inlineVoiceStatus" role="status">Ready to record</span><span id="inlineVoiceTimer">00:00</span></div>
+            <audio id="inlineVoicePreview" controls hidden></audio>
+            <div class="inline-voice-actions"><button id="inlineVoiceStop" type="button" disabled>Stop</button><button id="inlineVoiceSend" type="button" disabled>Send voice message</button><button id="inlineVoiceDiscard" type="button" hidden>Discard</button></div>
         </section>
     </div>
 

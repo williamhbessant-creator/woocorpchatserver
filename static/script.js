@@ -102,7 +102,29 @@ function addMessage(id, user, text, time, protectedMessage = false, canManage = 
     const textEl = document.createElement("span");
     textEl.className = "message-text";
     textEl.textContent = text;
-    content.append(timeEl, userEl, textEl);
+    const voiceMatch = typeof text === "string" ? text.match(/^\[\[VOICE_MESSAGE\|(https?:\/\/.+)\|(\d+)\]\]$/) : null;
+    if (voiceMatch) {
+        div.classList.add("message-voice");
+        const voiceBubble = document.createElement("div");
+        voiceBubble.className = "chat-voice-bubble";
+        const playLabel = document.createElement("span");
+        playLabel.className = "chat-voice-label";
+        playLabel.textContent = "Voice message";
+        const player = document.createElement("audio");
+        player.controls = true;
+        player.preload = "none";
+        player.src = voiceMatch[1];
+        player.setAttribute("aria-label", "Play voice message from " + user);
+        const duration = document.createElement("small");
+        duration.className = "chat-voice-duration";
+        const seconds = Math.max(0, Number(voiceMatch[2]) || 0);
+        duration.textContent = String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+        voiceBubble.append(playLabel, player, duration);
+        content.append(timeEl, userEl, voiceBubble);
+    } else {
+        textEl.textContent = text;
+        content.append(timeEl, userEl, textEl);
+    }
     div.appendChild(content);
     if (canManage) div.addEventListener("click", event => { if (!event.target.closest("button")) showMessageMenu(div, id, protectedMessage); });
     chatBox.appendChild(div);
