@@ -138,7 +138,9 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
             return jsonify({"error": "Invalid Stripe signature."}), 400
 
         if event["type"] == "checkout.session.completed":
-            session = event["data"]["object"]
+            # Stripe SDK API resources are not plain dictionaries. Convert the
+            # Session to a dictionary before using .get() and dictionary keys.
+            session = event["data"]["object"].to_dict()
             if session.get("payment_status") != "paid":
                 return jsonify({"received": True})
 
