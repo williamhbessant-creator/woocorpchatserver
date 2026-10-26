@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover
 
 PAID_AI_ENABLED = True
 PAID_AI_PACK_USES = 10
-PAID_AI_PACK_PRICE_PENCE = 0
+PAID_AI_PACK_PRICE_PENCE = 687
 PAID_AI_CURRENCY = "usd"
 
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
