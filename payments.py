@@ -145,20 +145,18 @@ def register_paid_ai(app, base_supabase, visitor_id_func):
                 return jsonify({"error": "Supabase service role is not configured."}), 503
 
             try:
-                admin.table("ai_paid_purchases").insert({
-                    "stripe_session_id": session["id"],
-                    "visitor_id": visitor_id,
-                    "uses": uses,
-                    "amount_paid": amount,
-                    "currency": currency,
+                # Record the purchase and add its balance atomically. The database
+                # ignores duplicate Stripe session IDs, so webhook retries cannot
+                # grant the same pack twice.
+                admin.rpc("record_ai_purchase", {
+                    "p_session_id": session["id"],
+                    "p_visitor_id": visitor_id,
+                    "p_uses": uses,
+                    "p_amount": amount,
+                    "p_currency": currency,
                 }).execute()
             except Exception as error:
-                # Stripe may retry a webhook. A unique session ID makes retries
-                # harmless; report the error but acknowledge an already-recorded
-                # purchase rather than granting it twice.
-                message = str(error).lower()
-                if "duplicate" not in message and "unique" not in message:
-                    print("Could not record paid AI purchase:", repr(error))
-                    return jsonify({"error": "Could not record the purchase."}), 500
+                print("Could not record paid AI purchase:", repr(error))
+                return jsonify({"error": "Could not record the purchase."}), 500
 
         return jsonify({"received": True}), 200
