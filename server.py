@@ -16,6 +16,7 @@ from ai_history import (
     delete_conversation,
 )
 from enhancements import register_enhancements
+from payments import get_paid_uses
 from audio_messages import register_audio_routes
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -99,7 +100,8 @@ def ai_usage():
         message_count = get_user_message_count(message_owner_id())
         if infinite:
             return jsonify({"uses_remaining": "∞", "unlimited": True, "infinite": True, "message_count": message_count, "required_messages": AI_REQUIRED_MESSAGES, "ai_unlocked": True})
-        return jsonify({"uses_remaining": max(0, AI_MAX_USES - used), "unlimited": False, "infinite": False, "message_count": message_count, "required_messages": AI_REQUIRED_MESSAGES, "ai_unlocked": message_count >= AI_REQUIRED_MESSAGES})
+        ai_limit = AI_MAX_USES + get_paid_uses(visitor_id, supabase)
+        return jsonify({"uses_remaining": max(0, ai_limit - used), "unlimited": False, "infinite": False, "message_count": message_count, "required_messages": AI_REQUIRED_MESSAGES, "ai_unlocked": message_count >= AI_REQUIRED_MESSAGES})
     except Exception as error:
         print("Supabase usage lookup failed:", repr(error))
         return jsonify({"error": "Could not check your AI usage."}), 500
@@ -201,7 +203,8 @@ def ai_assistant():
                 "infinite": False
             }), 403
 
-        if not infinite and used >= AI_MAX_USES:
+        ai_limit = AI_MAX_USES + (0 if infinite else get_paid_uses(visitor_id, supabase))
+        if not infinite and used >= ai_limit:
             return jsonify({"error": "You have no AI uses remaining.", "uses_remaining": 0, "unlimited": False, "infinite": False}), 429
 
         data = request.get_json(silent=True) or {}
@@ -243,7 +246,7 @@ def ai_assistant():
             remaining = "∞"
         else:
             used = increment_ai_uses(visitor_id)
-            remaining = max(0, AI_MAX_USES - used)
+            remaining = max(0, ai_limit - used)
         return jsonify({"response": reply, "uses_remaining": remaining, "unlimited": infinite, "infinite": infinite, "conversation_id": conversation_id})
     except Exception as error:
         print("AI request failed:", repr(error))
