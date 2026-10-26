@@ -57,25 +57,6 @@ def get_paid_uses(visitor_id, base_supabase):
 
 def register_paid_ai(app, base_supabase, visitor_id_func):
     """Register Stripe Checkout/webhook routes and connect paid uses to AI limits."""
-    import sys
-
-    # server.py is already executing when this function is called. Use the
-    # existing module object so local `python server.py` does not import a second
-    # copy of the application module.
-    server_module = sys.modules.get("server") or sys.modules.get("__main__")
-    if server_module is not None and not getattr(server_module, "_paid_ai_usage_wrapped", False):
-        original_get_ai_usage = server_module.get_ai_usage
-
-        def get_ai_usage_with_paid(visitor_id):
-            used, infinite = original_get_ai_usage(visitor_id)
-            if infinite or not PAID_AI_ENABLED:
-                return used, infinite
-            paid_uses = get_paid_uses(visitor_id, base_supabase)
-            return max(0, used - paid_uses), False
-
-        server_module.get_ai_usage = get_ai_usage_with_paid
-        server_module._paid_ai_usage_wrapped = True
-
     @app.get("/api/ai/paid/config")
     def paid_ai_config():
         # The frontend button is controlled by PAID_AI_ENABLED, as intended.
