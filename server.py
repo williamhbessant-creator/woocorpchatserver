@@ -274,7 +274,7 @@ def ai_assistant():
                 model="gpt-4.1",
                 instructions="Generate the image requested by the user. Follow the visual request faithfully.",
                 input=message,
-                tools=[{"type": "image_generation"}],
+                tools=[{"type": "image_generation", "model": "gpt-image-2.5-sunburst", "action": "generate", "output_format": "png"}],
             )
             image_output = next(
                 (item for item in image_result.output
