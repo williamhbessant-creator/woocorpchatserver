@@ -36,7 +36,7 @@
     <div class="container">
         <header>
             <h1>Woocorp Chat</h1>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
+            <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><button id="messageSettingsButton" type="button" aria-haspopup="dialog" aria-controls="messageSettingsDialog">Message Settings</button><button id="aiOpenButton" class="ai-open-button" type="button">🤖 AI Assistant</button></div>
         </header>
 
         <div id="chat-box"></div>
@@ -48,7 +48,6 @@
                 <button id="sendButton" type="button">Send</button>
                 <button id="voiceRecordButton" type="button" title="Record a voice message" aria-label="Record a voice message">🎙</button>
             </div>
-            <button id="messageSettingsButton" type="button" aria-haspopup="dialog" aria-controls="messageSettingsDialog">Message Settings</button>
             <button id="themeButton" type="button">
                 <img src="{{ url_for('static', filename='icons8-light-48.png') }}" alt="" class="theme-icon">
                 Theme
