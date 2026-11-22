@@ -54,62 +54,6 @@
     });
   }
 
-  const reactionChoices = ["👍", "❤️", "😂", "😮", "😢", "🔥"];
-  function renderReactionCounts(message, reactions) {
-    if (!message) return;
-    let counts = message.querySelector(".reaction-counts");
-    if (!counts) {
-      counts = document.createElement("div");
-      counts.className = "reaction-counts";
-      message.appendChild(counts);
-    }
-    counts.innerHTML = "";
-    Object.entries(reactions || {}).forEach(([emoji, count]) => {
-      const chip = document.createElement("span");
-      chip.className = "reaction-chip";
-      chip.textContent = `${emoji} ${count}`;
-      counts.appendChild(chip);
-    });
-    if (!Object.keys(reactions || {}).length) counts.remove();
-  }
-
-  const addReactionUI = message => {
-    if (!message || message.dataset.messageId === undefined || message.querySelector(".reaction-bar") || message.classList.contains("server-message")) return;
-    const bar = document.createElement("div");
-    bar.className = "reaction-bar";
-    reactionChoices.forEach(emoji => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "reaction-button";
-      button.dataset.emoji = emoji;
-      button.title = `React ${emoji}`;
-      button.textContent = emoji;
-      button.addEventListener("click", event => {
-        event.stopPropagation();
-        if (!socket?.connected) return;
-        socket.emit("toggle_reaction", { message_id: Number(message.dataset.messageId), emoji });
-      });
-      bar.appendChild(button);
-    });
-    message.appendChild(bar);
-  };
-
-  async function loadPersistedReactions(ids) {
-    const cleanIds = [...new Set((ids || []).map(Number).filter(Number.isInteger).filter(id => id > 0))];
-    if (!cleanIds.length) return;
-    try {
-      const response = await fetch(`/api/reactions?ids=${encodeURIComponent(cleanIds.join(","))}`, { cache: "no-store" });
-      if (!response.ok) return;
-      const data = await response.json();
-      Object.entries(data.reactions || {}).forEach(([id, reactions]) => {
-        const message = document.querySelector(`.message[data-message-id="${CSS.escape(String(id))}"]`);
-        if (message) renderReactionCounts(message, reactions);
-      });
-    } catch (error) {
-      console.error("Reaction history error:", error);
-    }
-  }
-
   function refreshChatFromServer() {
     if (socket?.connected) socket.emit("request_history");
   }
@@ -123,30 +67,19 @@
   }
 
   if (chatBox) {
-    new MutationObserver(() => chatBox.querySelectorAll(".message").forEach(addReactionUI)).observe(chatBox, { childList: true });
-    chatBox.querySelectorAll(".message").forEach(addReactionUI);
   }
 
   if (socket) {
-    socket.on("message_reactions", data => {
-      const message = document.querySelector(`.message[data-message-id="${CSS.escape(String(data.message_id))}"]`);
-      if (message) renderReactionCounts(message, data.reactions || {});
-      // Re-read from the database so the visible state is never stale.
-      loadPersistedReactions([data.message_id]);
-    });
-
     socket.on("chat_history", history => {
       const rows = history || [];
       setTimeout(() => {
         sortMessagesById();
-        loadPersistedReactions(rows.map(msg => msg[0]));
       }, 0);
     });
 
     socket.on("new_message", data => {
       setTimeout(() => {
         sortMessagesById();
-        loadPersistedReactions([data.id]);
       }, 0);
     });
 
