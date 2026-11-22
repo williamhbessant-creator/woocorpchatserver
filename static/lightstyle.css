@@ -120,14 +120,23 @@ h1 { text-align: center; }
 .ai-generated-image { display: block; width: auto; max-width: 100%; max-height: 65vh; height: auto; object-fit: contain; border-radius: 12px; margin-top: 8px; }
 .ai-image-error { margin-top: 8px; color: #c44; white-space: normal; }
 
-
-/* Text colours only */
-.message .text { color: #6549b8; }
-.message:nth-child(3n + 2) .text { color: #007f75; }
-.message:nth-child(3n) .text { color: #b85c2d; }
-.message .user { color: #6848d1; }
-.message .time { color: #74728a; }
-.server-message .text, .server-message .user { color: #008f80; }
-.ai-message-assistant { color: #49358e; }
-.ai-message-user { color: #fff; }
-.ai-title, h1 { color: #6242c5; }
+:root { --chat-message-time-color:#74728a; --chat-message-person-color:#6848d1; --chat-message-text-color:#6549b8; }
+.message .message-time { color:var(--chat-message-time-color); }
+.message .message-user { color:var(--chat-message-person-color); }
+.message .message-text { color:var(--chat-message-text-color); }
+.message-settings-dialog { position:fixed; inset:0; z-index:5000; display:flex; align-items:center; justify-content:center; padding:18px; background:rgba(0,0,0,.62); }
+.message-settings-dialog[hidden] { display:none; }
+.message-settings-panel { width:min(420px,100%); padding:20px; border:1px solid #ccc; border-radius:12px; background:#fff; color:#222; box-shadow:0 12px 40px rgba(0,0,0,.35); }
+.message-settings-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.message-settings-header h2 { margin:0; font-size:20px; }
+.message-settings-header button { width:36px; height:36px; border:0; border-radius:6px; background:transparent; color:inherit; font-size:26px; cursor:pointer; }
+.message-settings-panel > p { color:#666; font-size:14px; }
+.message-setting-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; font-weight:600; }
+.message-setting-row input { width:54px; height:36px; border:0; background:transparent; cursor:pointer; }
+.message-settings-preview { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; padding:14px; border:1px solid #ddd; border-radius:8px; background:#f7f7f7; }
+.message-settings-preview small { width:100%; }
+.message-settings-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:18px; }
+.message-settings-actions button { min-height:40px; padding:8px 13px; border:0; border-radius:6px; background:#4b8fc8; color:white; cursor:pointer; }
+.message-settings-actions button:hover { background:#325b84; }
+.message-settings-status { min-height:18px; margin-bottom:0; }
+@media (max-width:480px) { .message-settings-panel { padding:16px; } .message-settings-actions button { flex:1; } }
