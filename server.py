@@ -215,7 +215,7 @@ def ai_assistant():
         if conversation_id:
             existing = get_messages(supabase, visitor_id, conversation_id)
         else:
-            title = message.replace("\\n", " ").strip()
+            title = message.replace("\n", " ").strip()
             if len(title) > 60:
                 title = title[:57].rstrip() + "..."
             conversation_id = create_conversation(supabase, visitor_id, title or "New Chat")
