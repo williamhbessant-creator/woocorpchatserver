@@ -116,3 +116,7 @@ h1 { text-align: center; }
   .ai-message { max-width: 95%; }
   .ai-history { flex-basis: 135px; }
 }
+
+.ai-image-message { width: fit-content; max-width: min(92%, 620px); white-space: normal; }
+.ai-generated-image { display: block; width: auto; max-width: 100%; max-height: 65vh; height: auto; object-fit: contain; border-radius: 12px; margin-top: 8px; }
+.ai-image-error { margin-top: 8px; color: #c44; white-space: normal; }
