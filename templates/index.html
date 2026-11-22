@@ -48,6 +48,7 @@
                 <button id="sendButton" type="button">Send</button>
                 <button id="voiceRecordButton" type="button" title="Record a voice message" aria-label="Record a voice message">🎙</button>
             </div>
+            <button id="messageSettingsButton" type="button" aria-haspopup="dialog" aria-controls="messageSettingsDialog">Message Settings</button>
             <button id="themeButton" type="button">
                 <img src="{{ url_for('static', filename='icons8-light-48.png') }}" alt="" class="theme-icon">
                 Theme
@@ -55,7 +56,20 @@
             <button id="clearButton" type="button">Clear Chat</button>
         </div>
 
-        <section id="inlineVoiceComposer" class="inline-voice-composer" hidden aria-label="Voice message recorder">
+        <section id="messageSettingsDialog" class="message-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="messageSettingsTitle" hidden>
+        <div class="message-settings-panel">
+            <div class="message-settings-header"><h2 id="messageSettingsTitle">Message appearance</h2><button id="closeMessageSettings" type="button" aria-label="Close message settings">×</button></div>
+            <p>Choose the colours used in the actual chat messages.</p>
+            <label class="message-setting-row"><span>Time</span><input id="messageTimeColor" type="color" value="#a6abc1"></label>
+            <label class="message-setting-row"><span>Person</span><input id="messagePersonColor" type="color" value="#b9a5ff"></label>
+            <label class="message-setting-row"><span>Message</span><input id="messageTextColor" type="color" value="#d8c9ff"></label>
+            <div class="message-settings-preview"><small id="messagePreviewTime">08:30</small><strong id="messagePreviewPerson">Your name</strong><span id="messagePreviewText">This is what your chat message will look like.</span></div>
+            <div class="message-settings-actions"><button id="resetMessageColors" type="button">Reset colours</button><button id="saveMessageColors" type="button">Save</button></div>
+            <p id="messageSettingsStatus" class="message-settings-status" role="status"></p>
+        </div>
+    </section>
+
+    <section id="inlineVoiceComposer" class="inline-voice-composer" hidden aria-label="Voice message recorder">
             <div class="inline-voice-status"><span id="inlineVoiceDot"></span><span id="inlineVoiceStatus" role="status">Ready to record</span><span id="inlineVoiceTimer">00:00</span></div>
             <audio id="inlineVoicePreview" controls hidden></audio>
             <div class="inline-voice-actions"><button id="inlineVoiceStop" type="button" disabled>Stop</button><button id="inlineVoiceSend" type="button" disabled>Send voice message</button><button id="inlineVoiceDiscard" type="button" hidden>Discard</button></div>
@@ -99,6 +113,7 @@
 
     <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <script src="{{ url_for('static', filename='message-settings.js') }}"></script>
     <script src="{{ url_for('static', filename='bulkdelete.js') }}"></script>
     <script src="{{ url_for('static', filename='enhancements.js') }}"></script>
     <script src="{{ url_for('static', filename='paidai.js') }}"></script>
