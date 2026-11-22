@@ -64,33 +64,6 @@ def register_enhancements(app, socketio, supabase, visitor_id_func, openai_clien
         users = presence.list_users()
         return jsonify({"online": len(users), "users": users})
 
-    @app.get("/api/reactions")
-    def get_reactions():
-        try:
-            raw_ids = request.args.get("ids", "")
-            ids = []
-            for value in raw_ids.split(","):
-                try:
-                    message_id = int(value)
-                    if message_id > 0 and message_id not in ids:
-                        ids.append(message_id)
-                except (TypeError, ValueError):
-                    continue
-            if not ids:
-                return jsonify({"reactions": {}})
-            result = supabase.table("message_reactions").select("message_id, emoji").in_("message_id", ids).execute()
-            reactions = {}
-            for row in (result.data or []):
-                message_id = str(row.get("message_id"))
-                emoji = row.get("emoji")
-                if not emoji:
-                    continue
-                reactions.setdefault(message_id, {})[emoji] = reactions.setdefault(message_id, {}).get(emoji, 0) + 1
-            return jsonify({"reactions": reactions})
-        except Exception as error:
-            print("Reaction history lookup failed:", repr(error))
-            return jsonify({"error": "Could not load message reactions."}), 500
-
     @app.get("/api/ai/memory")
     def list_memory():
         try:
@@ -151,17 +124,3 @@ def register_enhancements(app, socketio, supabase, visitor_id_func, openai_clien
     def typing(data):
         username = str((data or {}).get("username", "Guest")).strip()[:20] or "Guest"
         socketio.emit("user_typing", {"username": username, "typing": bool((data or {}).get("typing"))}, include_self=False)
-
-    @socketio.on("toggle_reaction")
-    def toggle_reaction(data):
-        try:
-            message_id = int((data or {}).get("message_id"))
-            emoji = str((data or {}).get("emoji", "")).strip()
-            result = supabase.rpc("toggle_message_reaction", {
-                "p_message_id": message_id,
-                "p_visitor_hash": visitor_id_func(),
-                "p_emoji": emoji,
-            }).execute()
-            socketio.emit("message_reactions", {"message_id": message_id, "reactions": result.data or {}})
-        except Exception as error:
-            print("Reaction failed:", repr(error))
