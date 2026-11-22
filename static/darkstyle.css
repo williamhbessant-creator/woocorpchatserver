@@ -122,34 +122,13 @@ h1 { text-align: center; }
 .ai-image-error { margin-top: 8px; color: #c44; white-space: normal; }
 
 
-/* Colour refresh: richer accents, clearer messages and less flat grey. */
-:root { --accent: #9b7bff; --accent-2: #28c7b7; --accent-soft: rgba(155,123,255,.16); }
-body { background: radial-gradient(ellipse at top left, #29204a 0, #171923 48%, #11151d 100%); }
-h1 { color: #c7b8ff; text-shadow: 0 0 24px rgba(155,123,255,.25); }
-#chat-box { border: 1px solid #514477; background-color: #202331; box-shadow: 0 12px 36px rgba(0,0,0,.22); }
-.message { color: #e3e5f2; background: rgba(255,255,255,.035); border: 1px solid rgba(155,123,255,.13); border-left: 3px solid var(--accent); }
-.message:nth-child(3n + 2) { border-left-color: var(--accent-2); }
-.message:nth-child(3n) { border-left-color: #ff9b70; }
-.message:hover, .message-selected { background: rgba(155,123,255,.12); }
-.text { color: #e3e5f2; }
-.user { color: #b9a5ff; }
-.time { color: #a6abc1; }
-.server-message { background: rgba(40,199,183,.09); border-left-color: #28c7b7; }
-.controls input, #aiInput { border: 1px solid #514477; background: #24283a; }
-.controls button, .ai-open-button, .ai-send-button, #aiSendButton, .selection-bar button { background: linear-gradient(135deg, #8d6df0, #5d7de8); }
-.controls button:hover, .ai-open-button:hover, .ai-send-button:hover, #aiSendButton:hover, .selection-bar button:hover { background: linear-gradient(135deg, #a48cff, #6e91ff); }
-#clearButton, .message-action-delete, .selection-bar .bulk-delete { background: linear-gradient(135deg, #f06b78, #d84465); }
-#clearButton:hover, .message-action-delete:hover, .selection-bar .bulk-delete:hover { background: #c93255; }
-.ai-sidebar { background: #1d2030; border-left-color: #514477; }
-.ai-header, .ai-history, .ai-input-area { border-color: #3d4260; }
-.ai-title { color: #c7b8ff; }
-.ai-chat-title { color: #c9c9e7; border-color: #3d4260; }
-.ai-message-assistant { background: linear-gradient(135deg, #302b49, #293348); color: #f0edff; border: 1px solid rgba(155,123,255,.22); }
-.ai-message-user { background: linear-gradient(135deg, #287f91, #3267a9); color: white; }
-.ai-history-item.active { background: rgba(155,123,255,.16); }
-.ai-history-main:hover { background: rgba(155,123,255,.12); }
-.ai-new-button { border-color: #514477; background: #2c3045; }
-.ai-new-button:hover { background: #3a3c59; }
-.ai-uses-remaining { background: #292b40; border-color: #514477; color: #dcd5ff; }
-.protected-badge { color: #55d6b7; }
-.message-selected-for-delete { outline-color: #9b7bff; background: rgba(155,123,255,.2); }
+/* Text colours only */
+.message .text { color: #d8c9ff; }
+.message:nth-child(3n + 2) .text { color: #8fe2d5; }
+.message:nth-child(3n) .text { color: #ffc09b; }
+.message .user { color: #b9a5ff; }
+.message .time { color: #a6abc1; }
+.server-message .text, .server-message .user { color: #65d7b8; }
+.ai-message-assistant { color: #f0edff; }
+.ai-message-user { color: #fff; }
+.ai-title, h1 { color: #c7b8ff; }
