@@ -44,7 +44,8 @@ h1 { text-align: center; }
 .selection-bar .bulk-delete:disabled { opacity: .5; cursor: not-allowed; }
 .selection-bar .cancel-selection { background: #666; }
 .selection-count { font-weight: bold; padding: 0 8px; white-space: nowrap; }
-.message-settings-open-button { position: fixed; top: max(15px, env(safe-area-inset-top)); right: max(15px, env(safe-area-inset-right)); z-index: 1001; min-height: 44px; padding: 10px 16px; border: 1px solid #888; border-radius: 6px; cursor: pointer; font-size: 15px; }
+.message-settings-open-button { position: fixed; top: max(15px, env(safe-area-inset-top)); right: max(15px, env(safe-area-inset-right)); z-index: 1001; min-height: 44px; padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; background: #4b8fc8; color: white; font-size: 15px; transition: background .2s; }
+.message-settings-open-button:hover { background: #325b84; }
 .ai-open-button { position: fixed; top: max(75px, calc(env(safe-area-inset-top) + 75px)); right: max(15px, env(safe-area-inset-right)); z-index: 1000; }
 .ai-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); opacity: 0; visibility: hidden; transition: opacity .25s ease, visibility .25s ease; z-index: 1998; }
 .ai-overlay.open { opacity: 1; visibility: visible; }
